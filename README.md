@@ -1,2 +1,2 @@
-# Aether
+# Locus
 2026 NASA SPACE APPS CHALLENGE
