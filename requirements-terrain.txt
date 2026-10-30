@@ -1,0 +1,9 @@
+# Optional: actual DEM imports, context rasters and NASA example loader.
+# The core teaching workspace uses only Python's standard library.
+numpy>=1.26,<3
+rasterio>=1.4,<2
+pyproj>=3.6,<4
+Pillow>=10,<13
+
+# Optional verified CA bundle for Python on macOS (never disables TLS verification).
+certifi>=2024.2

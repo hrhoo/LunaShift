@@ -1,0 +1,4 @@
+# Python interface to NASA CSPICE. Native wheels avoid compiler setup.
+# Kernels are installed separately by tools/setup_spice.py or the in-app manager.
+spiceypy>=6,<9
+certifi>=2024.2.2

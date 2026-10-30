@@ -1,0 +1,24 @@
+# Python environments and generated caches
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local app state and downloaded resources
+.workspace/
+cache/
+kernels/
+
+# Generated reports and walkthrough exports
+qa_output/
+verification/
+learning_output/
+/source_check.json
+
+# Operating system metadata
+.DS_Store
+Thumbs.db

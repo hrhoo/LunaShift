@@ -1,0 +1,162 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LunaShift · Friendly guide</title><style>body{font:17px/1.65 system-ui,sans-serif;background:#f2f6f3;color:#193640;margin:0}main{max-width:960px;margin:auto;padding:30px}section{background:white;border:1px solid #dae5e0;border-radius:18px;padding:28px;margin:24px 0}h1{font-size:36px;line-height:1.2}h2{font-size:28px;line-height:1.3;margin:6px 0}h3{font-size:20px;color:#166a61}a{color:#166a61}p{margin:12px 0}.sub,figcaption,.kicker{color:#536b74}.kicker{font-size:13px;font-weight:700;letter-spacing:1px}figure{margin:20px 0}img{max-width:100%;height:auto;border:1px solid #dce6e2;border-radius:10px}figcaption{font-size:14px}.note{background:#fff6e4;padding:15px;border-left:4px solid #d4a442;border-radius:8px}pre{background:#eef4f1;padding:15px;overflow:auto;font:14px/1.6 ui-monospace,monospace}nav a{display:inline-block;margin:4px 12px 4px 0}</style><main><h1>LunaShift Mission Planner</h1><p>Version 0.5.0 · <a href="./LunaShift_v5_Simple_Guide.pdf" color="#116b64"><u>Open the illustrated PDF</u></a></p><nav>
+<a href="#p1">Your Moon-planning workspace</a>
+<a href="#p2">Open LunaShift on your Mac</a>
+<a href="#p3">Open LunaShift on Windows</a>
+<a href="#p4">Use only your browser</a>
+<a href="#p5">Where do the sky positions come from?</a>
+<a href="#p6">Make SPICE ready once</a>
+<a href="#p7">Choose a location you can investigate</a>
+<a href="#p8">Now, December, or another date</a>
+<a href="#p9">Watch the view change with time</a>
+<a href="#p10">Turn visibility into a lander estimate</a>
+<a href="#p11">Find a better option—and see why</a>
+<a href="#p12">Keep your work—and know its limits</a>
+</nav>
+<section id="p1"><p class="kicker">01 / A FRIENDLY START</p><h2>Your Moon-planning workspace</h2><p class="sub">LunaShift Mission Planner · Version 0.5.0</p>
+<p>Start with one place and one date. The platform checks when the Sun and Earth clear the terrain, then estimates how your panel, battery and radio would perform.</p>
+<figure><img src="images/geometry.png" alt="The new source selector is inside Mission Setup. This screenshot shows the teaching workspace."><figcaption>The new source selector is inside Mission Setup. This screenshot shows the teaching workspace.</figcaption></figure>
+<h3>What changed?</h3>
+<p>You can now use <b>Automatic</b>, <b>JPL Horizons</b> or <b>NASA SPICE</b> from the normal interface. SPICE is no longer only a separate export script.</p>
+<h3>Your first tour</h3>
+<p><b>Mission Setup → Sunlight &amp; Earth → Power &amp; Communications → Compare Options → Optimize Mission.</b> Use <b>Data &amp; Sources</b> to check what the answers are based on.</p>
+<p class="note"><b>Start without pressure.</b> Keep the opening example and learn the buttons first. Its terrain and sky are invented. The screenshots in this guide use that example; they are not real lunar forecasts.</p>
+<p><b>Choose your launch page:</b> Mac: page 2. Windows: page 3. Google Colab: page 4. Geometry choices: page 5. SPICE setup: page 6.</p>
+</section>
+<section id="p2"><p class="kicker">02 / START ON A MAC</p><h2>Open LunaShift on your Mac</h2><p class="sub">First setup installs SPICE. Later starts are shorter.</p>
+<h3>1. Save your old work, then extract the new ZIP</h3>
+<p>In the old app, click <b>Save a copy</b>. Stop its Terminal with <b>Control + C</b>. Extract <b>LunaShift_v5.zip</b> into Downloads. Keep it separate from earlier versions.</p>
+<p>You need <b>Python 3.10 or newer</b>. In Terminal, run <b>python3 --version</b>. If Python is missing, install it from <a href="https://www.python.org/downloads/" color="#116b64"><u>the official Python website</u></a>.</p>
+<h3>2. Open Terminal and paste these two lines</h3>
+<pre>cd &quot;$HOME/Downloads/LunaShift_v5&quot;
+bash Enable_SPICE_Mac.sh</pre>
+<p>The script creates a private Python environment, installs SPICE support, downloads about 19 MB of NASA files and opens the app. The first setup needs internet. Your system Python is not replaced.</p>
+<h3>3. Open the local website</h3>
+<pre>http://127.0.0.1:8765</pre>
+<p>Keep Terminal open while you use the app. Look for <b>v0.5.0</b> in the sidebar. If an older screen appears, stop the old server and refresh the browser.</p>
+<h3>Next time, use these lines</h3>
+<pre>cd &quot;$HOME/Downloads/LunaShift_v5&quot;
+.venv/bin/python run.py</pre>
+<p class="note"><b>Real terrain files?</b> From the same folder, run <b>bash Enable_Real_Data_Mac.sh</b> once to add the optional GeoTIFF tools. SPICE itself does not read terrain.</p>
+<p>To stop: <b>Control + C</b> in Terminal. To restore your previous project: <b>Data &amp; Sources → Open a saved workspace</b>.</p>
+</section>
+<section id="p3"><p class="kicker">03 / START ON WINDOWS</p><h2>Open LunaShift on Windows</h2><p class="sub">Use the launcher files. You do not need to edit Python code.</p>
+<h3>1. Check Python and extract the ZIP</h3>
+<p>Install <b>Python 3.10 or newer</b> from <a href="https://www.python.org/downloads/" color="#116b64"><u>python.org</u></a>. Enable the installer’s <b>Add Python to PATH</b> option. Right-click <b>LunaShift_v5.zip → Extract All</b>. Do not run from the ZIP preview.</p>
+<h3>2. First time: enable SPICE</h3>
+<pre>Enable_SPICE_Windows.bat</pre>
+<p>Double-click that file inside the extracted folder. It creates a private environment, installs the Python support, downloads the matching NASA files and starts the platform. Keep the window open.</p>
+<h3>3. Open the app in your browser</h3>
+<pre>http://127.0.0.1:8765</pre>
+<p>If the NASA files cannot be downloaded, the app can still open. Read the message in <b>Data &amp; Sources → SPICE made simple</b> rather than assuming SPICE is ready.</p>
+<h3>For later sessions</h3>
+<pre>Start_Windows.bat</pre>
+<p>Double-click this normal launcher. It uses the private SPICE environment when one exists. Press <b>Control + C</b> in the command window to stop.</p>
+<h3>Optional: add real-terrain file support</h3>
+<p>Open PowerShell in the extracted app folder and run:</p>
+<pre>.\.venv\Scripts\python.exe -m pip install -r requirements-terrain.txt</pre>
+<p class="note"><b>Then restart</b> with <b>Start_Windows.bat</b>. Only terrain import needs these extra packages.</p>
+<p>Before upgrading again, click <b>Save a copy</b>. Move your exported JSON, not the old virtual-environment folder.</p>
+</section>
+<section id="p4"><p class="kicker">04 / START IN GOOGLE COLAB</p><h2>Use only your browser</h2><p class="sub">Useful on Mac or Windows when you do not want a local installation.</p>
+<h3>1. Upload the notebook</h3>
+<p>Open <a href="https://colab.research.google.com/" color="#116b64"><u>Google Colab</u></a>. Select <b>File → Upload notebook</b> and choose <b>LunaShift_v5_Colab.ipynb</b>.</p>
+<h3>2. Run “Upload and launch”</h3>
+<p>Press the play button beside the first code cell. When asked, upload <b>LunaShift_v5.zip</b>. Keep it as a ZIP; do not upload the extracted folder.</p>
+<h3>3. Leave these settings on</h3>
+<pre>INSTALL_SPICE = True
+DOWNLOAD_SPICE_KERNELS = True
+INSTALL_REAL_DATA = True</pre>
+<p>The cell installs the tools and opens LunaShift below it. Use a <b>CPU runtime</b>; this release does not use CUDA. The first setup needs internet.</p>
+<h3>4. Work inside the embedded app</h3>
+<p>Select your geometry source in <b>Mission Setup</b>. In Colab, “local SPICE” means local to Google’s running computer, not installed on your Mac. You do not enter a Mac Downloads path.</p>
+<h3>5. Save before disconnecting</h3>
+<p>Run <b>Download my workspace</b> in the notebook. Keep the JSON file. In your next session, start the app again and open that saved workspace.</p>
+<p class="note"><b>Colab is temporary.</b> If the runtime is deleted, installed packages and NASA files must be set up again. A saved notebook alone does not save the app’s workspace.</p>
+<p>If the display disappears, run <b>Diagnostics / display the app again</b>. The notebook also includes an optional actual-SPICE check and source-connection report.</p>
+</section>
+<section id="p5"><p class="kicker">05 / PICK A GEOMETRY SOURCE</p><h2>Where do the sky positions come from?</h2><p class="sub">“Geometry” simply means where the Sun and Earth are from your location.</p>
+<figure><img src="images/geometry.png" alt="Three choices; the attached-source label beneath them shows what your current site is actually using."><figcaption>Three choices; the attached-source label beneath them shows what your current site is actually using.</figcaption></figure>
+<h3>Automatic — recommended</h3>
+<p>When a new track is needed, use local SPICE if its files and your dates are ready. Otherwise ask JPL Horizons. The result records which source was used and why.</p>
+<h3>JPL Horizons — online</h3>
+<p>Use this when you prefer an online request. It does not require local kernels. If the request fails, the app tells you; it does not quietly switch to SPICE.</p>
+<h3>NASA SPICE — local/offline</h3>
+<p>Use this after SPICE setup. The sky positions are calculated locally. If files or date coverage are missing, you get a setup message—not an invented or silently substituted answer.</p>
+<p class="note"><b>Choosing is not preparing.</b> After choosing a source, press <b>Prepare Sun &amp; Earth data</b>. The teaching example stays unchanged until you explicitly do this. Existing external CSV can remain in use under Automatic; prepare again to replace it.</p>
+</section>
+<section id="p6"><p class="kicker">06 / SPICE SETUP</p><h2>Make SPICE ready once</h2><p class="sub">Open Data & Sources → SPICE made simple.</p>
+<figure><img src="images/spice_setup_crop.png" alt="First-time setup state. This is a real interface screenshot, not a simulated “ready” result."><figcaption>First-time setup state. This is a real interface screenshot, not a simulated “ready” result.</figcaption></figure>
+<h3>Read the three checks</h3>
+<p><b>Python support:</b> the current app environment can import SpiceyPy. <b>NASA files:</b> the compatible files are present. <b>Your date interval:</b> the files cover your requested mission.</p>
+<h3>What should I click?</h3>
+<p>Run the setup script from page 2 or 3 first. Then click <b>Check setup</b>. If Python support is ready but files are missing, click <b>Download NASA files</b>. Return to Mission Setup and select <b>Prepare Sun &amp; Earth data</b>.</p>
+<p>You do not need to pick technical kernel filenames. This release manages one matched <b>DE421 / MOON_ME_DE421</b> set. It is chosen for compatibility, not advertised as the newest ephemeris. The app checks coverage from the loaded files.</p>
+<h3>Optional: compare the two engines</h3>
+<p>Expand <b>Compare SPICE with Horizons</b> and run the comparison. It checks the first 24 mission hours and leaves your attached data unchanged. Differences are a diagnostic, not a flight-accuracy certificate.</p>
+<p class="note"><b>Offline means sky calculations.</b> New map imagery or terrain downloads may still need internet. Real-kernel execution could not be verified in the build environment; use the local setup check and comparison on your computer.</p>
+</section>
+<section id="p7"><p class="kicker">07 / A REAL PLACE AND REAL INPUTS</p><h2>Choose a location you can investigate</h2><p class="sub">Lunar Map chooses the place. Data & Sources prepares the information.</p>
+<h3>Lunar Map: pick and save</h3>
+<p>Connect to the NASA map. Pan, zoom and click a point, or enter latitude and east longitude. Give the point a name and click <b>Save candidate</b>. A saved marker is not a claim that the land is safe.</p>
+<p class="note"><b>If the map service is unavailable:</b> use coordinates or an existing saved site. The app reports the connection problem. A coarse image fallback is visual context, not terrain for calculations.</p>
+<h3>A real analysis needs two different things</h3>
+<p><b>1. Ground data.</b> Attach a compatible LOLA/PGDA elevation file or a terrain-skyline CSV for the selected point. Check the frame, height units, coverage and resolution. The optional terrain tools read GeoTIFF files.</p>
+<p><b>2. Sky data.</b> Choose Horizons or SPICE, choose the date, then prepare the Sun/Earth tracks. Preparing real sky data does <b>not</b> replace invented terrain.</p>
+<h3>An easier first real-data exercise</h3>
+<p>In Data &amp; Sources, use <b>Load a real NASA example</b> after optional terrain support is installed. It attempts a real elevation download and prepares the sky with your selected source. It commits the workspace only when the complete operation succeeds.</p>
+<p>That example uses a raster-centre candidate and a limited terrain area. It is not an approved landing point. Confirm the source labels before reading the results.</p>
+<h3>Useful official links</h3>
+<p><a href="https://trek.nasa.gov/moon/" color="#116b64"><u>Moon Trek: explore imagery</u></a><br/><a href="https://pgda.gsfc.nasa.gov/products/78" color="#116b64"><u>PGDA: elevation and slope data</u></a><br/><a href="https://ssd-api.jpl.nasa.gov/doc/horizons.html" color="#116b64"><u>Horizons: online sky calculations</u></a></p>
+<p>For CSV files, the app shows the required columns. Use <b>docs/DATA_FORMATS.md</b> for exact formats. A filename alone never proves that a dataset matches your site.</p>
+</section>
+<section id="p8"><p class="kicker">08 / CHOOSE WHEN</p><h2>Now, December, or another date</h2><p class="sub">Mission Setup controls the location, time, duration and limits.</p>
+<figure><img src="images/mission_setup.png" alt="The same setup works with either geometry engine. The fields shown here belong to the teaching example."><figcaption>The same setup works with either geometry engine. The fields shown here belong to the teaching example.</figcaption></figure>
+<h3>To try a future mission</h3>
+<p>Choose <b>December 15, 2026, 00:00 UTC</b> and a duration of <b>168 hours</b>. That mission ends on <b>December 22, 2026, 00:00 UTC</b>. Select the source, prepare the sky data, then click <b>Check my plan</b>.</p>
+<h3>To use the current time</h3>
+<p>Click <b>Use current UTC</b>. This inserts the current time once. It is not a continuously connected Moon camera or live spacecraft telemetry. Recalculate after changing the date.</p>
+<h3>Set limits you understand</h3>
+<p>Start with the longest darkness you allow and the longest gap without Earth visibility. The example limits are only teaching values. Under <b>More settings</b>, adjust viewpoint height, slope limit, safety margin and time spacing.</p>
+<p class="note"><b>Watch the data coverage.</b> A future date is valid only when the sky data cover the full interval. For a real site, missing dates or a changed explicit source are prepared during calculation. The teaching example is not silently replaced.</p>
+<p>A shorter calculation step shows more timing detail but takes more work. Preparing all saved locations is helpful before comparing them.</p>
+</section>
+<section id="p9"><p class="kicker">09 / SUNLIGHT & EARTH</p><h2>Watch the view change with time</h2><p class="sub">This page explains why the lander has light—or loses its view of Earth.</p>
+<figure><img src="images/sky.png" alt="Actual interface using invented teaching data. The skyline is an illustration, not a photograph."><figcaption>Actual interface using invented teaching data. The skyline is an illustration, not a photograph.</figcaption></figure>
+<p>Click <b>Calculate visibility</b>, then <b>Play</b>. Pause, drag the slider or use the previous/next buttons. The timestamp, Sun, Earth and timelines use the same mission clock.</p>
+<p>Choose <b>Whole horizon</b>, <b>Follow Sun</b> or <b>Follow Earth</b>. The enlarged discs show fully visible, partly visible or hidden. The timeline uses body-centre clearance plus your chosen safety margin; these are related but not identical displays.</p>
+<p class="note"><b>Two different shadow views:</b> the local skyline uses attached terrain. The map’s day/night overlay uses a smooth lunar sphere, not every crater’s shadow. NASA Eyes and the reference animation are separate viewers with their own time controls.</p>
+</section>
+<section id="p10"><p class="kicker">10 / POWER & COMMUNICATIONS</p><h2>Turn visibility into a lander estimate</h2><p class="sub">Start with three simple numbers. Open advanced settings only when needed.</p>
+<figure><img src="images/power_metrics.png" alt="Example output cards from the teaching dataset. Their values are not measurements from a real lander."><figcaption>Example output cards from the teaching dataset. Their values are not measurements from a real lander.</figcaption></figure>
+<h3>1. Choose your hardware</h3>
+<p>Enter <b>solar-panel area</b>, <b>battery capacity</b> and <b>desired returned data</b>. Presets are illustrative, not official spacecraft specifications. Expand settings to adjust orientation, efficiencies, power demand and radio assumptions.</p>
+<h3>2. Click “Check power & communications”</h3>
+<p>Read the top result first. Then look at harvested energy, the lowest battery level, the radio margin and the amount of data returned. The charts share one time cursor.</p>
+<h3>3. Understand what is limiting the mission</h3>
+<p>Sunlight does not automatically mean enough electrical power. The panel angle, area and losses matter. A radio budget can be positive while terrain blocks Earth. Data return also needs energy and stored data to transmit.</p>
+<h3>4. Try a small change</h3>
+<p>Increase panel area or battery capacity and run again. Under <b>Find tested repairs</b>, try saved locations, selected panel/battery multipliers and optional 12/24-hour delays.</p>
+<p class="note"><b>These are engineering estimates.</b> The radio model is Earth-centre line-of-sight with a generic receiver, not a booked DSN station. Detailed thermal dynamics, measured fading and flight qualification are not included.</p>
+</section>
+<section id="p11"><p class="kicker">11 / COMPARE AND IMPROVE</p><h2>Find a better option—and see why</h2><p class="sub">Change one thing at a time so the result is easy to understand.</p>
+<figure><img src="images/repair_options_crop.png" alt="Example repair cards from the teaching workspace. The app searches the allowed, tested combinations."><figcaption>Example repair cards from the teaching workspace. The app searches the allowed, tested combinations.</figcaption></figure>
+<h3>Compare Options</h3>
+<p>Keep the same date, duration and limits. Compare your saved sites by sunlight, longest darkness, Earth visibility and the stated failure reason. For the same hardware at different sites, use the table on Power &amp; Communications.</p>
+<h3>Optimize Mission</h3>
+<p>Choose what may change: saved location, landing delay or viewpoint height. Click <b>Find better options</b>. Read the change and result on each card. Use <b>Inspect</b> to view an alternative; you can restore the original plan.</p>
+<h3>Hardware repairs are on the power page</h3>
+<p>Use its repair button for larger panels or batteries. These tests must satisfy the visibility checks and the hardware checks. They are separate from the location/time/height search.</p>
+<p class="note"><b>“Best” means best among the tested options.</b> This is not a global search of the whole Moon and not a guaranteed minimum-cost spacecraft design. Missing data stay unknown; extra delays require extra sky-data coverage.</p>
+</section>
+<section id="p12"><p class="kicker">12 / SAVE, SHARE AND GET UNSTUCK</p><h2>Keep your work—and know its limits</h2><p class="sub">Save a copy before upgrades, long experiments or closing Colab.</p>
+<h3>Save and reopen</h3>
+<p>Click <b>Save a copy</b> to download workspace JSON. Open it later from <b>Data &amp; Sources → Open a saved workspace</b>. It keeps the numerical data, actual geometry source and settings. It does not include installed packages, kernel binaries or your original large raster files.</p>
+<h3>Share with your group</h3>
+<p>Send the app ZIP and the exported JSON. Each teammate starts their own app. <b>127.0.0.1</b> opens only on the computer running the server; it is not a public website. Use <b>Help &amp; Guide</b> for the tour and this PDF.</p>
+<h3>When something does not work</h3>
+<p><b>“SPICE not installed”:</b> run the setup script, then restart with the private environment.<br/><b>“NASA files missing”:</b> check internet, then retry Download NASA files.<br/><b>“Dates not covered”:</b> choose a supported interval or explicitly select Horizons.<br/><b>No moving sky:</b> calculate first; check the site has terrain and tracks.<br/><b>Old screen:</b> stop the older server and refresh. Confirm v0.5.0.</p>
+<p class="note"><b>What was tested:</b> 203 Python tests and 200 scripted interface checks. Actual SPICE-kernel execution, live NASA downloads, native Mac/Windows launch and signed-in Colab were not verified in the build environment. Use the in-app checks on your computer. This is decision support, not flight certification.</p>
+<p><b>Technical details when you need them:</b> docs/SPICE.md, docs/DATA_FORMATS.md and docs/TEST_REPORT.md. Run tools/verify_spice.py with your SPICE-enabled Python for an actual-kernel check.</p>
+<p><b>Official references:</b> <a href="https://naif.jpl.nasa.gov/naif/data_generic.html" color="#116b64"><u>NASA kernels</u></a> · <a href="https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/moon_080317.tf" color="#116b64"><u>Matching lunar frame</u></a> · <a href="https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/spkcpo_c.html" color="#116b64"><u>CSPICE geometry</u></a> · <a href="https://spiceypy.readthedocs.io/en/stable/installation.html" color="#116b64"><u>SpiceyPy installation</u></a></p>
+</section>
+</main></html>
