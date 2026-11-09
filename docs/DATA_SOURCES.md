@@ -7,6 +7,7 @@ The browser package contains real NASA LOLA terrain and real JPL NAIF ephemeride
 ## Packaged files
 
 - `web/data/lunar-data.json`: three prepared candidate points, numerical terrain rays, local display meshes, and hourly Sun vectors.
+- `web/data/regional-terrain.json`: one continuous Connecting Ridge display mesh, sampled from the same hash-verified Site01 source; independent of the numerical mission inputs.
 - `web/data/provenance.json`: source URLs, SHA-256 digests, generation metadata, and site summaries.
 - `web/assets/moon-color.jpg`: authentic NASA CGI Moon Kit colour map, 2048 × 1024 pixels, used only for appearance.
 - `tools/prepare_data.py`: reproducible source-data preparation. No Python service is needed by the published application.
@@ -52,7 +53,26 @@ Elevations are bilinearly sampled from the appropriate source grid. Every radial
 
 A horizon must be computed from these profiles using the observer's reference elevation and selected height, including lunar curvature. Beyond the 80 km sampled range, the calculation engine assumes the unrepresented Moon follows the 1,737,400 m reference-radius sphere; it does not extend the site's ground elevation around the Moon. This is an explicit geometric assumption, not measured distant topography and not an addition to the stored DEM profiles. Distant mountains, peaks between azimuth rays, and features between radial samples can be missed. This package does not claim numerical convergence, full global obstruction coverage, or independent validation against operational illumination products.
 
-## Local 3D display meshes
+## Continuous regional display terrain
+
+The Planner's 3D and overhead views use one fixed 7.0 × 4.68 km crop covering all three prepared sites, with at least 1.6 km of surrounding context. The 176 × 118 grid is sampled at 40 m from the original 5 m Site01 GeoTIFF. The source SHA-256 is checked against `provenance.json` before sampling; this is a fresh crop of the published surface, not an interpolation between the old display tiles. Every sample must fall inside finite source coverage. The packaged asset is about 148 KB.
+
+The mesh uses a fixed east/north tangent frame at the Shoulder site and absolute radial elevations above the 1,737,400 m reference sphere. Projection uses the existing preparation conventions, including pixel-centre sampling and iterative radial-height positioning. Rendering includes lunar curvature and uses true vertical scale. Craft are enlarged for readability. The A/B distance connector denotes geographic separation, not a traversable route or a visibility calculation.
+
+Changing sites or dates retains the same surrounding terrain. The regional asset records the exact supported site coordinates and elevations; other imported sites fall back to their supplied display meshes. An imported horizon alone does not generate terrain. The regional display asset does not modify terrain rays, site elevations, ephemerides, or mission calculations, and it is embedded in the standalone HTML for offline use.
+
+Regenerate only this display asset, without ephemeris kernels or SpiceyPy:
+
+```sh
+python -m pip install numpy rasterio pyproj
+curl -fL https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/Site01/Site01_final_adj_5mpp_surf.tif -o /path/to/Site01.tif
+python tools/prepare_regional_terrain.py --dem /path/to/Site01.tif
+python tools/build_standalone.py
+```
+
+Use an isolated environment. Replace the placeholder source path with a local cache path. Sampling details, source hash, citation and library versions are retained in the regional asset's metadata. The 40 m display grid and the source's 5 m pixel spacing are not accuracy claims. The larger 80 m regional product remains an input to the existing horizon profiles; it is not needed for this display crop.
+
+## Local 3D display meshes (legacy and import fallback)
 
 Each site also contains a 151 × 151 local grid spanning 3 km at 20 m spacing, sampled separately from the 5 m source. This is deliberate display decimation; the numerical terrain profiles are not derived from the decimated mesh.
 

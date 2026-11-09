@@ -1,5 +1,5 @@
 {
-  "status": "COMPLETE; lunar-data.json contains all sites and ephemeris, no separate fetch",
+  "status": "COMPLETE; lunar-data.json contains mission inputs; regional-terrain.json contains the shared display surface. Both are embedded in the standalone HTML.",
   "sites_file": "bundled in lunar-data.json",
   "ephemeris_file": "bundled in lunar-data.json",
   "texture_file": "/assets/moon-color.jpg",
@@ -46,5 +46,13 @@
     "ridge-crest",
     "ridge-shoulder",
     "ridge-low"
-  ]
+  ],
+  "regional_terrain": {
+    "file": "regional-terrain.json",
+    "schema_version": "lunashift-regional-terrain-1",
+    "reference": "Fixed local east/north frame at reference latitude_deg/longitude_deg and ground_elevation_m",
+    "sites": "Exact supported site ids, coordinates and elevations; other sites use local meshes",
+    "mesh": "Same radial-elevation mesh contract; 40 m spacing, 176 columns \u00d7 118 rows",
+    "role": "Display only; does not replace numerical terrain rays or ephemerides"
+  }
 }

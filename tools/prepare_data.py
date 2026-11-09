@@ -12,7 +12,6 @@ import argparse, datetime as dt, hashlib, json, math, pathlib, shutil, ssl, urll
 import numpy as np
 import rasterio
 import pyproj
-import spiceypy as spice
 
 RADIUS_M = 1737400.0
 FRAME = 'MOON_ME_DE421'
@@ -134,6 +133,7 @@ def build_sites(fine,coarse):
     return sites
 
 def build_ephemeris(kernels):
+    import spiceypy as spice
     manifest=json.loads((kernels/'manifest.json').read_text())
     entries={x['name']:x for x in manifest['files']}
     used=[]

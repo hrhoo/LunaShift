@@ -3,7 +3,7 @@ import {add,sub,mul,dot,directionInFrame} from './visual-geometry.js';
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 export function cameraBasis(yaw,pitch){return {right:[-Math.cos(yaw),Math.sin(yaw),0],up:[-Math.sin(yaw)*Math.sin(pitch),-Math.cos(yaw)*Math.sin(pitch),Math.cos(pitch)],front:[Math.sin(yaw)*Math.cos(pitch),Math.cos(yaw)*Math.cos(pitch),Math.sin(pitch)]};}
 export function chooseCamera(geo,preset,role,sample){
- let yaw=2.2,pitch=preset==='low'?.12:preset==='close'?.22:.34;
+ let yaw=2.2,pitch=preset==='low'?.12:preset==='close'?.22:geo.terrainKind==='regional'?.55:.34;
  const a=geo.points[0],b=geo.points[1];
  if(a&&b&&!geo.sameSite){const d=sub(b.p,a.p);yaw=Math.atan2(d[1],-d[0]);}
  const selected=geo.points.find(p=>p.role===role)||a;

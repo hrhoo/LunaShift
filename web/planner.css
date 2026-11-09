@@ -62,6 +62,7 @@
 #page-planner .plan-card{border:1px solid #d8e2eb;border-left:3px solid var(--blue);border-radius:7px;padding:16px;margin-bottom:12px;background:white}
 #page-planner .alternative-card{border-left-color:#bd8c3b;background:#fffdf8}
 #page-planner .plan-card h3{font-size:19px;font-weight:600;margin:9px 0 5px;letter-spacing:-.5px}
+#page-planner .plan-coordinates{font-size:11px;line-height:1.6;color:#53657d;margin-bottom:4px;font-variant-numeric:tabular-nums}
 #page-planner .plan-date{font-size:11px;line-height:1.6;color:#6d7d90}
 #page-planner .plan-verdict{font-size:12px;padding:9px 0 7px;font-weight:600}
 #page-planner .plan-checks{display:grid;grid-template-columns:1fr 1fr;gap:6px 4px;border-top:1px solid #e9edf3;padding-top:9px}

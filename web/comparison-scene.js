@@ -107,6 +107,12 @@ export class ComparisonScene{
   const g=this.geo;if(!g)return;this.hitPoints=[];this.skyHitPoints=[];
   if(!g.hasTerrain){this.label(c,'No local display mesh supplied',w/2,h/2,'#b9c9d9','center');return;}
   const active=g.points.find(x=>x.role===this.role)||g.points[0],s=this.samples[this.role];
+  // Geographic separation is an annotation, not a traverse route or line of sight.
+  if(!g.sameSite&&g.points.length>1){
+   const a=this.project(g.points[0].p),b=this.project(g.points[1].p),distance=lunarDistanceKm(g.points[0].site,g.points[1].site);
+   c.save();c.strokeStyle='#dce5ef99';c.lineWidth=1.1;c.setLineDash([5,5]);c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();c.restore();
+   this.label(c,`${distance.toFixed(2)} km`,clamp((a.x+b.x)/2,58,w-58),clamp((a.y+b.y)/2-12,52,h-44),'#dfe8f1','center');
+  }
   // Depth-independent rings and readable A/B labels identify enlarged craft.
   for(const pt of g.points){
    const p=this.project(pt.p),rad=g.span*.036;this.hitPoints.push({x:p.x,y:p.y,role:pt.role});
@@ -114,7 +120,12 @@ export class ComparisonScene{
    for(let k=0;k<=64;k++){const t=k*Math.PI*2/64,m=g.sameSite&&pt.role==='alternative'?1.35:1,q=this.project(add(pt.p,[Math.cos(t)*rad*m,Math.sin(t)*rad*m,4]));if(k===0)c.moveTo(q.x,q.y);else c.lineTo(q.x,q.y);}c.stroke();
    if(!g.sameSite||pt.role===this.role){
     const q=this.project(add(pt.p,[0,0,g.span*.09]));
-    this.label(c,g.sameSite?'A / B · Same location':`${pt.role==='current'?'A':'B'} · ${shorten(pt.site.name)}`,clamp(q.x,88,w-88),clamp(q.y-6,this.showSky?182:45,h-49),pt.color,'center');
+    let labelY=q.y-6;
+    if(this.mode==='map'){
+     const other=g.points.find(x=>x!==pt),otherY=other?this.project(other.p).y:Infinity;
+     labelY=p.y+(g.sameSite||p.y<otherY||(p.y===otherY&&pt.role==='current')?-30:35);
+    }
+    this.label(c,g.sameSite?'A / B · Same location':`${pt.role==='current'?'A':'B'} · ${shorten(pt.site.name)}`,clamp(q.x,70,w-70),clamp(labelY,this.showSky?182:45,h-49),pt.color,'center');
    }
    const sp=this.samples[pt.role];
    if(this.mode!=='map'&&sp?.telemetryAvailable&&p.x>60&&p.x<w-60){
@@ -126,11 +137,6 @@ export class ComparisonScene{
    }
   }
   if(this.mode==='map'){
-   if(!g.sameSite&&g.points.length>1){
-    const aPt=this.project(g.points[0].p),bPt=this.project(g.points[1].p),dx=g.points[1].p[0]-g.points[0].p[0],dy=g.points[1].p[1]-g.points[0].p[1],dz=g.points[1].p[2]-g.points[0].p[2],distance=lunarDistanceKm(g.points[0].site,g.points[1].site);
-    c.save();c.strokeStyle='#dce5ef99';c.lineWidth=1.1;c.setLineDash([5,5]);c.beginPath();c.moveTo(aPt.x,aPt.y);c.lineTo(bPt.x,bPt.y);c.stroke();c.restore();
-    const mx=(aPt.x+bPt.x)/2,my=(aPt.y+bPt.y)/2;this.label(c,`${distance.toFixed(2)} km`,clamp(mx,58,w-58),clamp(my-9,52,h-44),'#dfe8f1','center');
-   }
    const base=this.project(g.center),side=this.project(add(g.center,[500,0,0])),px=Math.hypot(side.x-base.x,side.y-base.y);
    if(px>12&&px<w*.55){c.strokeStyle='#9aacbe';c.lineWidth=1.2;c.beginPath();c.moveTo(18,h-32);c.lineTo(18+px,h-32);c.stroke();c.beginPath();c.moveTo(18,h-36);c.lineTo(18,h-28);c.moveTo(18+px,h-36);c.lineTo(18+px,h-28);c.stroke();c.fillStyle='#aab9c8';c.font='9px system-ui';c.textAlign='left';c.fillText('500 m',18,h-40);}
    return;

@@ -16,40 +16,87 @@ export function localToWorld(e,n,z,f){const up=Math.sqrt(Math.max(0,(R+z)**2-e*e
 export function pointInFrame(site,base){return worldToLocal(tangentFrame(site).origin,base);}
 export function directionInFrame(site,base,az,el){const f=tangentFrame(site),a=az*D,h=el*D,v=add(mul(f.east,Math.sin(a)*Math.cos(h)),add(mul(f.north,Math.cos(a)*Math.cos(h)),mul(f.up,Math.sin(h))));return[dot(v,base.east),dot(v,base.north),dot(v,base.up)];}
 function meshInfo(s){const m=s.mesh;if(!m)return null;return{...m,flat:Array.isArray(m.elevations_m[0])?m.elevations_m.flat():m.elevations_m,frame:tangentFrame(s),site:s};}
+// Clip in the shared east/north plane; interpolate height on the original
+// triangle. This retains measured patch edges without extending their coverage.
+const turn=(a,b,p)=>(b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0]);
+const bounds=ps=>[Math.min(...ps.map(p=>p[0])),Math.min(...ps.map(p=>p[1])),Math.max(...ps.map(p=>p[0])),Math.max(...ps.map(p=>p[1]))];
+const overlaps=(a,b)=>a[0]<b[2]-1e-8&&a[2]>b[0]+1e-8&&a[1]<b[3]-1e-8&&a[3]>b[1]+1e-8;
+function splitPolygon(poly,a,b){
+ const inside=[],outside=[];
+ for(let i=0;i<poly.length;i++){
+  const p=poly[i],q=poly[(i+1)%poly.length],dp=turn(a,b,p),dq=turn(a,b,q);
+  (dp>=0?inside:outside).push(p);
+  if((dp>=0)!==(dq>=0)){
+   const hit=add(p,mul(sub(q,p),dp/(dp-dq)));inside.push(hit);outside.push(hit);
+  }
+ }
+ return {inside,outside};
+}
+function subtractTriangle(poly,clip){
+ if(!overlaps(bounds(poly),clip.bounds))return [poly];
+ let remaining=poly;const pieces=[];
+ for(let i=0;i<3&&remaining.length>=3;i++){
+  const {inside,outside}=splitPolygon(remaining,clip.points[i],clip.points[(i+1)%3]);
+  if(outside.length>=3)pieces.push(outside);remaining=inside;
+ }
+ return pieces;
+}
+function suppliedTriangles(m,frame){
+ const stride=Math.max(1,Math.round(40/m.spacing_m));
+ const indices=size=>{const out=[];for(let i=0;i<size-1;i+=stride)out.push(i);out.push(size-1);return out;};
+ const cols=indices(m.width),rows=indices(m.height),cache=new Map(),out=[];
+ const at=(c,r)=>{
+  const key=r*m.width+c;if(!cache.has(key))cache.set(key,worldToLocal(localToWorld(m.origin_x_m+c*m.spacing_m,m.origin_y_m+r*m.spacing_m*(m.row_order==='north_to_south'?-1:1),m.flat[key],m.frame),frame));
+  return cache.get(key);
+ };
+ for(let y=0;y<rows.length-1;y++)for(let x=0;x<cols.length-1;x++){
+  const c=cols[x],r=rows[y],cc=cols[x+1],rr=rows[y+1];let valid=true;
+  // Do not decimate across missing source samples.
+  for(let j=r;j<=rr&&valid;j++)for(let i=c;i<=cc;i++)if(!Number.isFinite(m.flat[j*m.width+i])){valid=false;break;}
+  if(!valid)continue;
+  const a=at(c,r),b=at(cc,r),d=at(c,rr),f=at(cc,rr);
+  for(const points of [[a,b,d],[b,f,d]]){
+   if(turn(...points)<0)points.reverse();out.push({points,bounds:bounds(points)});
+  }
+ }
+ return out;
+}
 export function terrainScene(bundle,records){
- const valid=records.filter(Boolean),reference=valid[0]?.result.site||bundle.sites[0],frame=tangentFrame(reference);
+ const valid=records.filter(Boolean),reference=valid[0]?.result.site||bundle.sites[0];
  const selected=[...new Set(valid.map(r=>r.result.site.id))].map(id=>bundle.sites.find(s=>s.id===id)).filter(Boolean);
  if(!selected.length)selected.push(reference);
- const meshes=selected.map(meshInfo).filter(Boolean),vertices=[],triangles=[];
- // Build one resampled display grid over the union of the supplied patches.
- // Values outside all supplied DEM patches stay null (no invented terrain).
- if(meshes.length){
-  let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity;
-  for(const m of meshes)for(const [col,row] of [[0,0],[m.width-1,0],[0,m.height-1],[m.width-1,m.height-1]]){
-   const z=m.flat[row*m.width+col];if(!Number.isFinite(z))continue;
-   const p=worldToLocal(localToWorld(m.origin_x_m+col*m.spacing_m,m.origin_y_m+row*m.spacing_m*(m.row_order==='north_to_south'?-1:1),z,m.frame),frame);
-   minE=Math.min(minE,p[0]);maxE=Math.max(maxE,p[0]);minN=Math.min(minN,p[1]);maxN=Math.max(maxN,p[1]);
+ const region=bundle.regionalTerrain;
+ // A prepared regional mesh only represents the exact sites it was built for.
+ // Imports and legacy bundles retain their own measured display patches.
+ const useRegion=region?.schema_version==='lunashift-regional-terrain-1'&&region.coordinate_frame==='MOON_ME_DE421'&&region.mesh&&selected.every(s=>region.sites.some(p=>['id','latitude_deg','longitude_deg','ground_elevation_m'].every(k=>p[k]===s[k])));
+ const frame=tangentFrame(useRegion?region.reference:reference);
+ const meshes=useRegion?[meshInfo({...region.reference,mesh:region.mesh})]:selected.map(meshInfo).filter(Boolean),vertices=[],triangles=[],vertexIds=new Map();
+ // Keep each patch's native grid (including its final row and column). Trim
+ // later patches against earlier coverage to avoid overlapping, flickering faces.
+ // The spatial index also preserves holes: only valid source triangles cover land.
+ const bins=new Map(),binSize=80;
+ const keys=box=>{const out=[];for(let y=Math.floor(box[1]/binSize);y<=Math.floor(box[3]/binSize);y++)for(let x=Math.floor(box[0]/binSize);x<=Math.floor(box[2]/binSize);x++)out.push(x+':'+y);return out;};
+ const vertex=p=>{const key=p.map(v=>Math.round(v*1e6)).join(':');if(!vertexIds.has(key)){vertexIds.set(key,vertices.length);vertices.push(p);}return vertexIds.get(key);};
+ for(const m of meshes){
+  const source=suppliedTriangles(m,frame);
+  for(const t of source){
+   const candidates=new Set(keys(t.bounds).flatMap(key=>bins.get(key)||[]));let pieces=[t.points];
+   for(const clip of candidates){
+    if(!overlaps(t.bounds,clip.bounds))continue;
+    pieces=pieces.flatMap(poly=>subtractTriangle(poly,clip));if(!pieces.length)break;
+   }
+   for(const poly of pieces)for(let i=1;i<poly.length-1;i++){
+    if(Math.abs(turn(poly[0],poly[i],poly[i+1]))<1e-7)continue;
+    triangles.push([poly[0],poly[i],poly[i+1]].map(vertex));
+   }
   }
-  const step=40,e0=Math.ceil(minE/step)*step,n0=Math.ceil(minN/step)*step,nx=Math.floor((maxE-e0)/step)+1,ny=Math.floor((maxN-n0)/step)+1;
-  const read=(e,n,zGuess)=>{
-   const world=localToWorld(e,n,zGuess,frame);let best=Infinity,answer=null;
-   for(const m of meshes){const p=worldToLocal(world,m.frame),col=(p[0]-m.origin_x_m)/m.spacing_m,row=(p[1]-m.origin_y_m)/m.spacing_m*(m.row_order==='north_to_south'?-1:1);
-    if(col<0||row<0||col>m.width-1||row>m.height-1)continue;
-    const c=Math.min(m.width-2,Math.floor(col)),r=Math.min(m.height-2,Math.floor(row)),u=col-c,v=row-r,a=m.flat[r*m.width+c],b=m.flat[r*m.width+c+1],d=m.flat[(r+1)*m.width+c],f=m.flat[(r+1)*m.width+c+1];
-    if(![a,b,d,f].every(Number.isFinite))continue;const distance=p[0]*p[0]+p[1]*p[1];
-    if(distance<best){best=distance;answer=(a*(1-u)+b*u)*(1-v)+(d*(1-u)+f*u)*v;}
-   }return answer;
-  };
-  for(let r=0;r<ny;r++)for(let c=0;c<nx;c++){const e=e0+c*step,n=n0+r*step;let z=read(e,n,reference.ground_elevation_m);if(z!==null){const refined=read(e,n,z);if(refined!==null)z=refined;}
-   vertices.push(z===null?null:[e,n,Math.sqrt(Math.max(0,(R+z)**2-e*e-n*n))-(R+reference.ground_elevation_m)]);
-  }
-  for(let r=0;r<ny-1;r++)for(let c=0;c<nx-1;c++){const a=r*nx+c,b=a+1,d=a+nx,f=d+1;if([a,b,d].every(i=>vertices[i]))triangles.push([a,b,d]);if([b,f,d].every(i=>vertices[i]))triangles.push([b,f,d]);}
+  if(m!==meshes[meshes.length-1])for(const t of source)for(const key of keys(t.bounds)){if(!bins.has(key))bins.set(key,[]);bins.get(key).push(t);}
  }
  const points=valid.map(r=>({role:r.role,site:r.result.site,p:pointInFrame(r.result.site,frame),result:r.result,color:r.role==='current'?A_COLOR:B_COLOR}));
  let min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(const p of vertices){if(p)for(let j=0;j<3;j++){min[j]=Math.min(min[j],p[j]);max[j]=Math.max(max[j],p[j]);}}
  if(!vertices.length){min=[-1500,-1500,0];max=[1500,1500,0];}
  const span=Math.max(max[0]-min[0],max[1]-min[1],100),center=min.map((v,i)=>(v+max[i])/2);center[2]=0;
- return{frame,vertices,triangles,points,min,max,span,center,hasTerrain:vertices.length>0,sameSite:points.length>1&&points[0].site.id===points[1].site.id};
+ return{frame,vertices,triangles,points,min,max,span,center,terrainKind:useRegion?'regional':'local',hasTerrain:vertices.length>0,sameSite:points.length>1&&points[0].site.id===points[1].site.id};
 }
 export function panelNormal(settings,sample){
  const az=(settings.panelMode==='fixed'?settings.azimuthDeg:sample?.sunAzDeg||0)*D;

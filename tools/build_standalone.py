@@ -22,9 +22,11 @@ payload={'modules':modules,'texture':'data:image/jpeg;base64,'+base64.b64encode(
 payload['sky']={name:'data:image/webp;base64,'+base64.b64encode((web/('assets/'+name+'-illustration.webp')).read_bytes()).decode() for name in ['sun','earth']}
 assets=json.dumps(payload,separators=(',',':')).replace('</','<\\/')
 data=(web/'data/lunar-data.json').read_text().replace('</','<\\/')
+regional=(web/'data/regional-terrain.json').read_text().replace('</','<\\/')
 boot=r'''
 <script id="lunashift-embedded-assets" type="application/json">ASSETS</script>
 <script id="lunashift-embedded-data" type="application/json">DATA</script>
+<script id="lunashift-embedded-regional" type="application/json">REGIONAL</script>
 <script>
 (async()=>{
  const payload=JSON.parse(document.getElementById('lunashift-embedded-assets').textContent);
@@ -32,6 +34,7 @@ boot=r'''
  const originalFetch=window.fetch.bind(window);
  window.fetch=async function(path,options){
   if(String(path)==='data/lunar-data.json')return new Response(document.getElementById('lunashift-embedded-data').textContent,{status:200,headers:{'Content-Type':'application/json'}});
+  if(String(path)==='data/regional-terrain.json')return new Response(document.getElementById('lunashift-embedded-regional').textContent,{status:200,headers:{'Content-Type':'application/json'}});
   return originalFetch(path,options);
  };
  const urls={};
@@ -57,7 +60,7 @@ boot=r'''
 </script>
 '''
 # Literal substitution avoids accidental replacement inside source strings.
-boot=boot.replace('>ASSETS</script>','>'+assets+'</script>').replace('>DATA</script>','>'+data+'</script>')
+boot=boot.replace('>ASSETS</script>','>'+assets+'</script>').replace('>DATA</script>','>'+data+'</script>').replace('>REGIONAL</script>','>'+regional+'</script>')
 html=html.replace('</body>',boot+'</body>')
 (root/'LunaShift_Open.html').write_text(html)
 print('Built LunaShift_Open.html',len(html.encode()),'bytes')

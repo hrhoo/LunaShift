@@ -20,6 +20,7 @@ The baseline search evaluates 45 combinations and finds 13 that meet the four se
 
 ## What this update adds
 
+- A continuous NASA LOLA regional surface shared by the 3D and overhead views, with A/B markers and geographic separation. The 7.0 × 4.68 km crop is packaged for offline use; imported sites retain their supplied local terrain.
 - A calmer two-column Planner and collapsible hardware inputs.
 - Larger linked 3D, 2D and horizon views; automatic framing of both landers.
 - An interactive site × landing-date feasibility matrix.
