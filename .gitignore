@@ -19,6 +19,13 @@ verification/
 learning_output/
 /source_check.json
 
+/qa/upgrade/*.png
+/qa/upgrade/*.txt
+/qa/upgrade/*-results.json
+/qa/upgrade/graphics-probe.json
+/qa/upgrade/live-horizons.json
+/qa/upgrade/preservation.json
+
 # Operating system metadata
 .DS_Store
 Thumbs.db

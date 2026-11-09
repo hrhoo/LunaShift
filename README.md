@@ -1,64 +1,82 @@
-# LunaShift Mission Planner v0.5.0
+# LunaShift — Lunar South Pole Mission Planner
 
-Explore a site. Test a mission. Find a better plan.
+## Open it
 
-## Start here
-Open **LunaShift_v5_Simple_Guide.pdf** for screenshots and short instructions.
-Python 3.10 or newer is required for local use. Download Python from https://www.python.org/downloads/ when needed.
-Export your old workspace, stop the previous server, and extract this version into a **new folder**. Open saved JSON from **Data & Sources**. Do not copy a `.venv` between computers.
+Double-click **LunaShift_Open.html** in a current desktop browser. It contains the app, visual assets and prepared calculation data. No account, internet connection, Python or npm is required for the standalone application.
 
-## Mac: first-time SPICE setup
-Extract `LunaShift_v5.zip` into Downloads, open Terminal, and run:
+The approved Overview and the Planner's top introduction are unchanged. Navigation still contains only **Overview** and **Planner**. No Guide/Present buttons or visible Load example/Save/Open controls have been restored at the top.
 
-```bash
-cd "$HOME/Downloads/LunaShift_v5"
-bash Enable_SPICE_Mac.sh
+## Start with the included mission
+
+1. Select **Planner**. The Shoulder mission beginning 7 November 2026 calculates automatically.
+2. Expand **Mission requirements & hardware** only to change settings. Its summary stays visible when closed.
+3. Inspect the linked **3D surface, 2D map and local horizon**. Each has an expand/restore control. One time cursor drives all of them.
+4. Click **Find an alternative**. The default search allows both locations and dates, up to 14 days later, sampled daily.
+5. Compare blue A with gold B. The gain panel reports changes in actual units, including regressions.
+6. Select **Explore all tested sites & dates**. The site-by-date matrix shows every tested case. Click a cell to inspect that case as B, without replacing A.
+7. Read **Is it the location, the date, or both?** This controlled comparison keeps hardware and requirements fixed and uses results actually evaluated by the search.
+
+The baseline search evaluates 45 combinations and finds 13 that meet the four selected checks. Under the unchanged highest-minimum-battery ranking, Crest on 10 November 2026 is the preferred tested choice. This is a bounded prepared-data demonstration, not a global lunar optimum.
+
+## What this update adds
+
+- A calmer two-column Planner and collapsible hardware inputs.
+- Larger linked 3D, 2D and horizon views; automatic framing of both landers.
+- An interactive site × landing-date feasibility matrix.
+- Explicit original/location-only/date-only/combined comparisons.
+- A quantified benefit panel with restored and newly failed requirements.
+- Electrical energy accounting: loads, storage, losses, unused surplus and initial charge.
+- Separate gross-harvest and task-ready clocks.
+- Link-quality readouts: station clearance, C/N0, rate-cap margin and powered transmission.
+- Cumulative energy and link-margin plots sharing the mission cursor.
+- An optional, source-grounded uncoded Rician-BPSK reference, not a modem or coded-link claim.
+- Equipment-height-aware online Horizons cross-check, with discrepancy warnings.
+- A fixed data-drawer stacking issue that could previously block mouse clicks.
+
+The solar, battery/radio mission engine, search equations and numerical data are retained. The new decision explanations operate on their results, rather than replacing them with invented scores.
+
+## Offline and online
+
+The standalone file uses prepared numerical data, including for its current-UTC sky. Current-time calculation does not imply an internet connection.
+
+For the optional online JPL Horizons check, extract the full package and run **Start_Windows.bat**, **Start_Mac.command**, **start_linux.sh**, or:
+
+```sh
+python3 run.py
 ```
 
-The script creates a private `.venv`, installs SpiceyPy and downloads a compatible NASA kernel set (about 19 MB). First setup needs internet. If the files fail to download, the app still opens and tells you how to retry.
+Open the localhost address printed by the launcher. Keep that window open. The application needs this server's `/api/horizons` route; a plain static server does not provide it. The launcher uses only the Python standard library.
 
-Later, start with:
+Inside Planner, open **Data, online check & imports**. A successful health check proves only that the local server exists, not that JPL is reachable. The online request uses the inspected A/B site, time, collector height and antenna height. It compares Sun and Earth angles but does not silently replace data, validate terrain, extend coverage or reserve a ground station. Differences exceeding 0.1° are warned about, not automatically accepted as agreement.
 
-```bash
-cd "$HOME/Downloads/LunaShift_v5"
-.venv/bin/python run.py
+Live JPL retrieval was attempted in this build environment and failed at DNS resolution. The adapter and response/error paths were checked with controlled fixtures; successful outbound live retrieval remains unverified here.
+
+## Data bounds and scientific interpretation
+
+The packaged calculation data cover three prepared Connecting Ridge locations and 1 January 2026 through 1 January 2028. Imports can add compatible numerical terrain/skyline sites. A map pin alone cannot generate missing terrain.
+
+Task-ready energy includes initial battery charge and means energy stored above reserve. It does not automatically execute the payload task. Generated kWh are not all stored: surplus is curtailed when loads and storage cannot absorb it.
+
+The radio assessment is a declared preliminary link budget plus fade-margin model. Ground access, model rate and actual powered transmission are different quantities. The optional ideal BER diagnostic has no effect on the delivered-data calculation and is not the uploaded paper's PLL/LDPC simulation.
+
+Landers, panels and celestial symbols are exaggerated for readability. The local mesh is explanatory, not a validated complete shadow map or landing-safety model. Geometry-only sky playback does not create battery/data results beyond the mission.
+
+## Read more
+
+- `docs/QUICK_START.md`: settings, matrix, comparison and presentation walkthrough.
+- `docs/SOURCE_MODEL_BOUNDARIES.md`: exactly how the two supplied sources relate to the code.
+- `docs/VERIFICATION.md`: tests, preservation checks and known limitations.
+- `docs/DATA_SOURCES.md` and `docs/MODEL.md`: retained preparation and model details.
+
+## Source and tests
+
+```sh
+npm test
+python3 qa/upgrade/online_adapter_test.py
+python3 tools/build_worker.py
+python3 tools/build_standalone.py
 ```
 
-Open `http://127.0.0.1:8765`. Keep Terminal open; Control+C stops the server.
-To install optional terrain reading as well, run `bash Enable_Real_Data_Mac.sh` from the same folder. It uses the same `.venv`.
+`qa/upgrade/browser_test.py` requires Python Playwright and Chromium. It tests the exact standalone file via in-memory loading because local browser navigation is restricted in the build environment. Change the Chromium executable path in the script for your system. Application users do not need these tools.
 
-## Windows: first-time SPICE setup
-After cloning the repository or extracting the ZIP completely, double-click **Start_Windows.bat**. Install Python 3.10 or newer first. The launcher automatically creates a private `.venv`, installs the SPICE and terrain packages, and downloads NASA kernels when needed. First setup requires internet access. Keep its command window open.
-
-Later launches reuse the installed environment. Dependency installation runs again when a requirements file or Python version changes, or a required package cannot be imported. Failed package setup stops the launch with a retry message. Failed NASA downloads allow the app to open; use **Download NASA files** in the app to retry.
-
-Commit the launcher, `tools/setup_environment.py`, and both `requirements-*.txt` files with the application. `.venv`, downloaded kernels, caches, and local workspace state remain excluded by `.gitignore`; each clone recreates its own copies. Cloning alone does not run setup: start the launcher on each computer.
-
-## Google Colab
-Upload `LunaShift_v5_Colab.ipynb` into Colab. Run **Upload and launch**, then upload **LunaShift_v5.zip**. Leave the three setup flags True. Use a CPU runtime. SPICE is installed in the temporary Google runtime, not on your laptop. Download your workspace before disconnecting.
-
-## Try the teaching example without installing packages
-From the extracted folder run `python3 run.py` on Mac/Linux, or `py -3 run.py` on Windows. This runs the standard-library application. It does not enable SPICE by itself.
-
-## Choose your geometry source
-In **Mission Setup**:
-- **Automatic — recommended:** uses ready SPICE for covered dates, otherwise Horizons. It records the reason.
-- **JPL Horizons — online:** uses Horizons only. Network failures are shown, not silently changed to SPICE.
-- **NASA SPICE — local/offline:** uses local SPICE only. Missing files or unsupported dates produce a setup message, not another source.
-
-Choose a site and date, then press **Prepare Sun & Earth data**. Real NASA sky data do not magically change synthetic terrain. Attach real terrain separately. The teaching workspace is never overwritten merely by selecting a radio option.
-
-The **actual attached source** appears separately from your selected preference. Existing imported CSV can remain in use under Automatic; explicitly prepare to replace it. Real-data calculations refresh missing dates or changed explicit sources when required.
-
-## First exercise
-Keep the supplied teaching date and Site A. Check the plan. Play the Sunlight & Earth timeline. Change panel area under Power & Communications. Compare options, then try Optimize Mission. The example numbers are invented for learning, not a real landing recommendation.
-
-## SPICE detail and verification
-Read `docs/SPICE.md`. Managed files use DE421 and MOON_ME_DE421, with CN+S reception geometry. This is a deliberate compatible set, not a latest-ephemeris claim. SPICE does not supply terrain or map imagery.
-Run `tools/verify_spice.py` with your SPICE-enabled Python for an actual-kernel check. Add `--online` for short Horizons comparisons. The UI also includes **Compare SPICE with Horizons**. Differences are reported, not labelled certified or perfect.
-
-## What was and was not tested
-See `docs/TEST_REPORT.md`. Logic and interface tests include simulated provider responses. Actual CSPICE kernels, native Mac/Windows launch, live NASA services, and a signed-in Colab runtime could not be exercised in the build environment. Do not treat the number of tests as an astronomical accuracy certificate.
-
-## Save and share
-Export your JSON workspace. It includes calculated tracks, sampled terrain and settings, not the original huge raster files, installed packages or kernel binaries. Your teammates use their own app copy and import the JSON. The localhost address is not a public website.
+The full package contains source, generated standalone application, numerical data, attribution notices, examples and test records. No original licensed paper PDF is redistributed.

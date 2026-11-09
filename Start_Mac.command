@@ -1,12 +1,8 @@
 #!/bin/bash
-cd "$(dirname "$0")" || exit 1
-PY=python3
-if [ -x .venv/bin/python ]; then PY=.venv/bin/python; fi
-"$PY" run.py
-code=$?
-if [ "$code" -ne 0 ]; then
- echo "Read the error above. Stop the older server with Control+C, or use another port."
- echo 'Terminal fallback: cd "$HOME/Downloads/LunaShift_v5"; python3 run.py'
- read -r -p "Press Enter to close. "
+cd "$(dirname "$0")"
+if command -v python3 >/dev/null 2>&1; then
+ python3 run.py
+else
+ echo "Python 3 is required. Install Python 3 from python.org, then reopen this launcher."
+ read -r -p "Press Enter to close."
 fi
-exit "$code"

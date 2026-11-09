@@ -1,0 +1,11 @@
+{
+  "name": "lunashift",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "qa": "python3 qa/upgrade/browser_test.py",
+    "start": "python3 run.py",
+    "build": "python3 tools/build_worker.py && python3 tools/build_standalone.py"
+  }
+}

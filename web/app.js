@@ -1,492 +1,259 @@
-'use strict';
-
-/* LunaShift Mission Planner 0.5.0. No external JavaScript, CDN, telemetry, or build step. */
-const $ = id => document.getElementById(id);
-const S = {token:'', project:null, analysis:null, repair:null, selected:'A', sample:0,
-  page:'plan', busy:false, dirty:false, prior:null, play:null, mapHits:[],
-  repairBase:null, tourIndex:0, saveTimer:null, restoring:false, storage:null};
-const C = {grid:'#e6ebe6', muted:'#75858d', text:'#243c48', teal:'#247458', sun:'#c08a2c',
-  earth:'#3f8fa7', red:'#b67356', terrain:'#8a9e8c', terrainFill:'#dce5d9', bg:'#ffffff'};
-const PAGE_NAMES = {plan:'Mission Setup', compare:'Compare Options', repair:'Optimize Mission', data:'Data & Sources', learn:'Help & Guide'};
-const SETTINGS = ['start','duration','step','height','minSun','maxDark','maxGap','maxSlope','margin','slopeCheck'];
-const SEARCH_SETTINGS = ['allowMove','allowDelay','allowHeight','maxDelay','maxHeight','delayStep','heightStep','wMove','wDelay','wHeight','preference'];
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = (value,n=1) => value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(n);
-const tag = status => `<span class="pill ${esc(status)}">${status === 'pass' ? '✓ Within limits' : status === 'fail' ? '↗ Needs a change' : '? Missing data'}</span>`;
-const prettyDate = (value, compact=false) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Date not set';
-  return date.toLocaleString('en-GB', {timeZone:'UTC',day:'2-digit',month:'short',...(compact?{}:{year:'numeric'}),hour:'2-digit',minute:'2-digit'})+' UTC';
-};
-const shortName = site => String(site?.name || '').replace(/^[A-Za-z0-9]+\s*[·•]\s*/, '');
-const duration = h => h >= 48 ? `${fmt(h / 24, h%24===0?0:1)} days` : `${fmt(h, h%1===0?0:1)} hours`;
-function note(text, kind='neutral') {
-  const box = $('message'); box.textContent = text; box.className = 'message '+kind;
-  if(kind==='error') box.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-function busy(on, label='Checking your plan…') {
-  if(on) S.focusBeforeBusy=document.activeElement;
-  S.busy=on; $('busy').classList.toggle('hidden',!on); $('busyLabel').textContent=label;
-  document.querySelector('.app-shell').inert=on; document.querySelector('.rail').inert=on;
-  if(!on && S.focusBeforeBusy?.isConnected && S.focusBeforeBusy.tagName!=='BODY') {
-    try {S.focusBeforeBusy.focus({preventScroll:true});} catch(_) {}
-  }
-}
-async function api(path, body, {timeoutMs=180000}={}) {
-  const options = body===undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-LunaShift-Token':S.token},body:JSON.stringify(body)};
-  let response;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
-  try { response=await fetch('./'+path.replace(/^\//,''), {...options,signal:controller.signal}); }
-  catch (error) {clearTimeout(timer);throw new Error(error.name==='AbortError'?'The request timed out. The server may still be finishing the operation; check its status before retrying.':'The platform cannot reach its Python server. Keep Terminal or your Colab runtime running, then reload this page.'); }
-
-  let data;
-  try { data=await response.json(); } catch (_) {throw new Error('The server returned an unreadable response. Check the terminal log.');} finally{clearTimeout(timer);}
-  if(!response.ok) throw new Error(data.error || `The request failed (${response.status}).`);
-  return data;
-}
-function params() {
-  if(!$('start').value) throw new Error('Choose a landing date and time first.');
-  return {start_utc:$('start').value.length===16?$('start').value+':00Z':$('start').value+'Z',
-    duration_h:+$('duration').value, step_min:+$('step').value, height_m:+$('height').value,
-    min_sun_pct:+$('minSun').value, max_dark_h:+$('maxDark').value, max_earth_gap_h:+$('maxGap').value,
-    max_slope_deg:+$('maxSlope').value, check_slope:$('slopeCheck').checked, margin_deg:+$('margin').value};
-}
-function validateInputs() {
-  for(const id of SETTINGS) {
-    if(!$(id).checkValidity()) {if($(id).closest('details')) $(id).closest('details').open=true;
-      setPage('plan'); $(id).reportValidity(); throw new Error('Please correct the highlighted mission setting.');}
-  }
-  return params();
-}
-function current() {return !S.dirty && S.analysis?.results.find(row=>row.site_id===S.selected);}
-function currentSite() {return S.project?.sites.find(site=>site.id===S.selected);}
-function sampleInfo() {const r=current(); if(!r?.tracks?.length) return null; const i=Math.max(0,Math.min(S.sample,r.tracks.length-1));return {r,i,track:r.tracks[i]};}
-function stopPlayback() {if(S.play) clearInterval(S.play);S.play=null;syncPlaybackControls();}
-function syncPlaybackControls(){
-  const r=current(),site=currentSite(),canPrepare=site&&site.terrain_kind&&(site.track_mode==='synthetic'||site.track_start);
-  const text=S.play?'Ⅱ Pause':r?.tracks?.length?'▶ Play':canPrepare?'↻ Calculate & play':'Add data to play';
-  for(const id of ['playButton','skyPlay','mapPlay','engPlay'])if($(id)){$(id).textContent=text;$(id).setAttribute('aria-pressed',String(!!S.play));}
-  for(const id of ['timeSlider','skySlider','mapSlider'])if($(id)){$(id).disabled=!r?.tracks?.length;$(id).max=Math.max(0,(r?.tracks?.length||1)-1);$(id).value=r?.tracks?.length?S.sample:0;}
-}
-async function togglePlayback(){
-  if(S.play){stopPlayback();return;}
-  if(S.busy)return;
-  if(!current()?.tracks?.length){
-    const site=currentSite();
-    if(!site?.terrain_kind||!(site.track_mode==='synthetic'||site.track_start)){
-      setPage('data');note('This location needs its own terrain skyline and Sun/Earth tracks before it can play. Attach the missing data below, or explicitly open the teaching example.','warn');return;
-    }
-    await runAnalysis();
-  }
-  if(!current()?.tracks?.length){note('This plan could not be animated. Check the data coverage and calculation message; no example was substituted.','warn');return;}
-  if(S.sample>=current().tracks.length-1)S.sample=0;
-  const speed=()=>Math.max(100,900/Number($('playSpeed')?.value||2));
-  S.play=setInterval(()=>{const r=current();if(!r?.tracks?.length)return stopPlayback();S.sample=(S.sample+1)%r.tracks.length;updateTime();drawAll();syncPlaybackControls();},speed());
-  syncPlaybackControls();updateTime();drawAll();
-}
-function setPage(name, scroll=true) {
-  if(!PAGE_NAMES[name]) name='plan';
-  S.page=name; $('pageName').textContent=PAGE_NAMES[name];
-  document.querySelectorAll('.nav-item').forEach(button=>{const active=button.dataset.page===name;button.classList.toggle('active',active);if(active) button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
-  document.querySelectorAll('.page').forEach(page=>page.classList.toggle('active',page.id==='page-'+name));
-  if(!['plan','explore','sky','engineering'].includes(name)) stopPlayback();
-  if(name==='repair') renderBaseline();
-  if(scroll) window.scrollTo({top:0,behavior:'instant'});
-  requestAnimationFrame(drawAll);
-}
-function choose(id, navigate=false) {
-  if(!S.project.sites.some(site=>site.id===id)) return;
-  if(S.selected!==id) clearRepair();
-  S.selected=id; $('siteSelect').value=id; S.sample=0;stopPlayback();
-  renderSiteDetails();renderSelected();renderBaseline();queueSettings();
-  if(navigate) setPage('plan');
-}
-function uiState() {
-  const fields={};for(const id of [...SETTINGS,...SEARCH_SETTINGS]) fields[id]=$(id).type==='checkbox'?$(id).checked:$(id).value;
-  return {selected_site_id:S.selected,fields};
-}
-function restoreSettings(state) {
-  if(!state||typeof state!=='object') return;
-  S.restoring=true;
-  for(const [id,value] of Object.entries(state.fields||{})) if([...SETTINGS,...SEARCH_SETTINGS].includes(id)) {
-    if($(id).type==='checkbox') $(id).checked=value===true;else $(id).value=String(value);
-  }
-  if(S.project.sites.some(site=>site.id===state.selected_site_id)) S.selected=state.selected_site_id;
-  $('siteSelect').value=S.selected;S.restoring=false;renderSiteDetails();syncSearchInputs();
-}
-function queueSettings() {if(S.restoring || !S.project) return;clearTimeout(S.saveTimer);$('saveState').textContent='Saving settings…';S.saveTimer=setTimeout(()=>saveSettings().catch(e=>note('Settings could not be saved: '+e.message,'warn')),500);}
-async function saveSettings() {
-  clearTimeout(S.saveTimer);
-  const saved=await api('/api/settings',{ui_state:uiState()});
-  S.storage=saved.storage; $('saveState').textContent=S.storage?.persistent?'Saved on this computer':'Saved in this runtime';
-}
-function renderSiteDetails() {
-  const site=currentSite();if(site) $('siteDetails').innerHTML=`${fmt(Math.abs(site.latitude_deg),4)}° ${site.latitude_deg<0?'S':'N'} · ${fmt(site.longitude_deg,4)}° E<br>${site.synthetic_terrain?'Synthetic example terrain':site.terrain_kind?'User-supplied terrain':'Terrain not added yet'}`;
-  $('durationNote').textContent=`${fmt(+$('duration').value,0)} hours = ${fmt(+$('duration').value/24,2)} Earth days.`;
-  $('fetchStart').textContent=`Starts ${prettyDate(($('start').value||'')+'Z')}. Include the full mission plus every delay you plan to test.`;
-}
-function projectUpdated(project, restore=false) {
-  S.project=project;if(!project.sites.some(site=>site.id===S.selected)) S.selected=project.sites[0].id;
-  for(const id of ['siteSelect','fetchSite','csvSite']) {$(id).innerHTML=project.sites.map(site=>`<option value="${esc(site.id)}">${esc(site.name)}</option>`).join('');$(id).value=S.selected;}
-  if(restore) restoreSettings(project.ui_state);
-  const synthetic=project.sites.filter(site=>site.track_mode==='synthetic'||site.track_synthetic||site.synthetic_terrain||site.slope_synthetic).length;
-  const missing=project.sites.filter(site=>!site.terrain_kind||site.track_mode==='none'||(site.track_mode==='imported'&&!site.track_start)).length;
-  $('dataBanner').classList.toggle('real',!synthetic);
-  $('dataBadge').textContent=synthetic ? 'Learning data · not a lunar forecast' : 'User-supplied data · validation still required';
-  $('dataText').textContent=synthetic ? `${synthetic} of ${project.sites.length} locations contain invented inputs. Use them to learn the workflow, not to plan a real mission.` : `Verify each source, coordinate frame, and time range.${missing?' '+missing+' location(s) need more data.':''}`;
-  $('candidateCount').textContent=`${project.sites.length} candidate locations`;
-  renderSources();renderSiteDetails();renderBaseline();
-}
-function clearRepair() {
-  S.repair=null;$('repairOptions').innerHTML='';$('repairSummary').className='info-note';$('repairSummary').innerHTML='Choose what can change, then select <b>Find better options</b>. Nothing is applied until you choose an option.';
-  $('envelope').innerHTML='<div class="empty-state">Your site × date comparison will appear here after the search.</div>';
-  $('repairTable').innerHTML='<p class="field-note">Run the search first.</p>';
-}
-function markDirty() {
-  S.dirty=true;stopPlayback();clearRepair();$('impactBox').classList.add('hidden');$('settingsNote').textContent='Settings changed. Check your plan again to update the results.';$('settingsDot').classList.add('dirty');
-  renderSiteDetails();renderSelected();renderCompare();renderBaseline();queueSettings();
-}
-async function runAnalysis({scroll=false}={}) {
-  if(S.busy) return;
-  let p;try {p=validateInputs();} catch(e) {note(e.message,'error');return;}
-  busy(true,'Checking visibility at every candidate site…');
-  try {
-    if(typeof ensureGeometryForMission==='function')await ensureGeometryForMission(p);
-    const result=await api('/api/analyze',p);S.analysis=result;S.dirty=false;S.sample=0;stopPlayback();
-    $('message').classList.add('hidden');$('settingsNote').textContent='Up to date · all candidates use these mission settings.';$('settingsDot').classList.remove('dirty');
-    renderSelected();renderCompare();renderImpact();renderBaseline();
-    try {await saveSettings();} catch(e) {note('Results are ready, but autosave failed. Use Save a copy. '+e.message,'warn');}
-    if(scroll) $('decisionCard').scrollIntoView({behavior:'smooth',block:'start'});
-  } catch(e) {note(e.message,'error');} finally {busy(false);}
-}
-function renderDecision(result) {
-  const box=$('decisionCard');
-  if(S.dirty||!result) {
-    box.className='decision-card stale';box.innerHTML=`<div><div class="eyebrow">RESULTS NEED A REFRESH</div><h2>${S.dirty?'Your inputs changed. Let’s recheck them.':'Ready when you are.'}</h2><p>Select <b>Check my plan</b> to calculate the visibility using your current inputs. Old results are hidden so they cannot be mistaken for a new prediction.</p></div><button class="button primary" data-action="analyze">Check my plan →</button>`;return;
-  }
-  const status=result.status;box.className='decision-card '+status;
-  const titles={pass:'This plan is within your selected limits.',fail:'This plan needs a change.',unknown:'We need more data to answer this.'};
-  const reasons=result.reasons?.join(' ')||'All enabled visibility and slope checks pass for this modeled mission.';
-  box.innerHTML=`<div><div class="eyebrow">${esc(result.site_name)} · ${duration(result.parameters?.duration_h||S.analysis.parameters.duration_h).toUpperCase()}</div><h2>${titles[status]}</h2><p>${esc(reasons)}</p></div><button class="button ${status==='unknown'?'secondary':'primary'}" data-go="${status==='unknown'?'data':status==='pass'?'compare':'repair'}">${status==='unknown'?'Add missing data':status==='pass'?'Compare the other sites':'Find a better option'} →</button>`;
-}
-function renderSelected() {
-  syncPlaybackControls();const r=current();renderDecision(r);
-  $('reportButton').disabled=!r?.metrics;$('exportResults').disabled=!S.analysis||S.dirty;
-  if(!r?.metrics) {
-    $('metrics').innerHTML='';$('constraintList').innerHTML='<div class="loading-note">No current calculation for this site. Check your settings and data, then run the plan.</div>';
-    $('nowCards').innerHTML='';$('obstruction').textContent='No current terrain and track calculation.';$('timeLabel').textContent='';$('timeSlider').max=0;$('runtime').textContent='Not calculated';
-    drawAll();renderCompare();return;
-  }
-  const m=r.metrics,p=S.analysis.parameters;
-  const cards=[
-    {name:'Time in sunlight',value:m.sunlight_pct,unit:'%',sub:`${fmt(m.sunlight_h)} of ${fmt(p.duration_h,0)} hours`,class:'sun',pass:m.sunlight_pct+1e-8>=p.min_sun_pct,limit:`Target: at least ${fmt(p.min_sun_pct,0)}%`},
-    {name:'Longest darkness',value:m.longest_dark_h,unit:'h',sub:'One uninterrupted dark period',class:'sun',pass:m.longest_dark_h<=p.max_dark_h+1e-8,limit:`Your limit: ${fmt(p.max_dark_h,0)} hours`},
-    {name:'Time Earth is visible',value:m.earth_visible_pct,unit:'%',sub:`${fmt(m.earth_visible_h)} hours with Earth in view`,class:'earth',pass:null,limit:'A view of Earth, not a verified link'},
-    {name:'Longest Earth-hidden gap',value:m.longest_earth_gap_h,unit:'h',sub:'One uninterrupted gap in visibility',class:'earth',pass:m.longest_earth_gap_h<=p.max_earth_gap_h+1e-8,limit:`Your limit: ${fmt(p.max_earth_gap_h,0)} hours`}];
-  $('metrics').innerHTML=cards.map(c=>`<div class="metric ${c.class} ${c.pass===false?'issue':''}"><div class="metric-title">${c.name}</div><div class="metric-value">${fmt(c.value)}<span>${c.unit}</span></div><div class="metric-sub">${c.sub}</div><div class="metric-check ${c.pass===false?'fail':''}">${c.pass===null?'○':c.pass?'✓':'↗'} ${c.limit}</div></div>`).join('');
-  $('timeSlider').max=r.tracks.length-1;S.sample=Math.min(S.sample,r.tracks.length-1);$('timeSlider').value=S.sample;
-  $('runtime').textContent=`${fmt(S.analysis.runtime_s,3)} s · CPU calculation`;
-  const checks=[['Sunlight target',`At least ${fmt(p.min_sun_pct,0)}%`,fmt(m.sunlight_pct)+'%',m.sunlight_pct+1e-8>=p.min_sun_pct],
-    ['Longest darkness',`No more than ${fmt(p.max_dark_h,0)} hours`,fmt(m.longest_dark_h)+' h',m.longest_dark_h<=p.max_dark_h+1e-8],
-    ['Earth-hidden gap',`No more than ${fmt(p.max_earth_gap_h,0)} hours`,fmt(m.longest_earth_gap_h)+' h',m.longest_earth_gap_h<=p.max_earth_gap_h+1e-8]];
-  if(p.check_slope) checks.push(['Terrain slope',`No more than ${fmt(p.max_slope_deg,0)}°`,m.slope_deg==null?'Not supplied':fmt(m.slope_deg)+'°',m.slope_deg==null?null:m.slope_deg<=p.max_slope_deg]);
-  else checks.push(['Terrain slope','This check is turned off','Not checked',null]);
-  $('constraintList').innerHTML=checks.map(([name,requirement,actual,ok])=>`<div class="constraint-row"><span class="check-icon ${ok===null?'unknown':ok?'pass':'fail'}">${ok===null?'−':ok?'✓':'!'}</span><div><b>${name}</b><small>${requirement}</small></div><span>${actual}</span></div>`).join('');
-  updateTime();drawAll();renderCompare();
-}
-function nextEvent(intervals,hours,total,body) {
-  const edges=intervals.flatMap(([a,b])=>[{t:a,visible:true},{t:b,visible:false}]).filter(e=>e.t>hours+1e-6&&e.t<total-1e-6).sort((a,b)=>a.t-b.t);
-  if(!edges.length) return 'No further change found before mission end.';
-  const e=edges[0];return `${e.visible?(body==='sun'?'Sun returns':'Earth returns'):(body==='sun'?'Sun is lost':'Earth is hidden')} in ${fmt(e.t-hours)} h.`;
-}
-function updateTime() {
-  document.dispatchEvent(new CustomEvent('lunashift:time'));
-  const d=sampleInfo();if(!d) return;
-  const {r,i,track}=d;const hour=r.hours[i];
-  $('timeLabel').textContent=prettyDate(track.time_utc,true);
-  $('nowCards').innerHTML=['sun','earth'].map(body=>{const clear=r.curves[body].clearance_deg[i];return `<div class="now-card"><span class="now-icon ${body==='earth'?'earth':''}" aria-hidden="true">${body==='sun'?'☀':'◉'}</span><div><strong>${body==='sun'?'Sun':'Earth'} ${clear>0?'is visible':'is hidden / below the margin'}</strong><small>${nextEvent(r.intervals[body],hour,r.parameters.duration_h,body)}</small></div></div>`;}).join('');
-  let text=['sun','earth'].map(body=>`<b>${body==='sun'?'Sun':'Earth'}:</b> ${fmt(r.curves[body].clearance_deg[i],2)}° clearance after your margin.`);
-  const body=r.curves.sun.clearance_deg[i]<=0?'sun':r.curves.earth.clearance_deg[i]<=0?'earth':null;
-  if(body) {
-    const az=track[body+'_azimuth_deg'];let index=0,best=Infinity;
-    r.profile.azimuth_deg.forEach((a,j)=>{const difference=Math.abs((a-az+540)%360-180);if(difference<best){best=difference;index=j;}});
-    const blocker=r.profile.blockers[index];
-    if(blocker) text.push(`For the ${body==='sun'?'Sun':'Earth'}, the nearest sampled limiting ray points ${fmt(blocker.azimuth_deg,1)}° around the horizon to terrain ${fmt(blocker.distance_m/1000,2)} km away. This is a sampled ray, not a precisely identified ridge.`);
-    else text.push('This fixed skyline or smooth-sphere continuation has no stored terrain-point attribution.');
-  }
-  text.push(`Terrain sampled to: ${r.profile.range_limit_m?fmt(r.profile.range_limit_m/1000,2)+' km':'unknown distance'}. Terrain outside that range is not verified.`);
-  $('obstruction').innerHTML=text.join(' ');
-}
-function renderCompare() {
-  if(!S.analysis||S.dirty) {
-    $('compareSummary').innerHTML='';$('compareCards').innerHTML='';$('comparisonContext').textContent='';
-    $('comparisonTable').innerHTML='<div class="empty-state">Check your current plan first. Then every site will be compared using the same settings. <button class="text-button" data-go="plan">Open the planner →</button></div>';return;
-  }
-  const rows=S.analysis.results,p=S.analysis.parameters;
-  const pass=rows.filter(r=>r.status==='pass').length,fail=rows.filter(r=>r.status==='fail').length,unknown=rows.filter(r=>r.status==='unknown').length;
-  $('compareSummary').innerHTML=[[pass,'Within your limits'],[fail,'Need a change'],[unknown,'Need more data']].map(([v,label])=>`<div class="summary-stat"><strong>${v}</strong><small>${label}</small></div>`).join('');
-  $('comparisonContext').textContent=`Landing ${prettyDate(p.start_utc)} · ${duration(p.duration_h)} · viewpoint ${fmt(p.height_m)} m. These are candidate comparisons, not a universal best-site ranking.`;
-  $('comparisonTable').innerHTML=`<table><thead><tr><th>LOCATION</th><th>SUNLIGHT</th><th>LONGEST DARKNESS</th><th>EARTH VISIBLE</th><th>LONGEST EARTH GAP</th><th>RESULT</th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.site_id===S.selected?'selected':''}"><td><button class="table-button" data-inspect="${esc(r.site_id)}">${esc(r.site_name)} →</button></td><td>${r.metrics?fmt(r.metrics.sunlight_pct)+'%':'—'}</td><td>${r.metrics?fmt(r.metrics.longest_dark_h)+' h':'—'}</td><td>${r.metrics?fmt(r.metrics.earth_visible_pct)+'%':'—'}</td><td>${r.metrics?fmt(r.metrics.longest_earth_gap_h)+' h':'—'}</td><td>${tag(r.status)}</td></tr>`).join('')}</tbody></table>`;
-  $('compareCards').innerHTML=rows.map(r=>`<article class="card compare-card"><div class="card-heading"><h3>${esc(shortName({name:r.site_name}))}</h3>${tag(r.status)}</div>${r.metrics?`<div class="bar-label"><span>Sunlight</span><b>${fmt(r.metrics.sunlight_pct)}%</b></div><div class="mini-bar"><span style="width:${r.metrics.sunlight_pct}%"></span></div><div class="bar-label"><span>Earth visible</span><b>${fmt(r.metrics.earth_visible_pct)}%</b></div><div class="mini-bar earth"><span style="width:${r.metrics.earth_visible_pct}%"></span></div>`:''}<p class="field-note">${esc(r.reasons?.join(' ')||'All selected limits pass for this mission.')}</p><button class="text-button" data-inspect="${esc(r.site_id)}">Inspect this location →</button></article>`).join('');
-}
-
-// Canvas charts are rendered locally. The map is a local layout, never a fabricated NASA basemap.
-function canvas(id) {
-  const el=$(id),rect=el.getBoundingClientRect();if(!rect.width||!rect.height) return null;
-  const scale=Math.min(window.devicePixelRatio||1,2);el.width=Math.round(rect.width*scale);el.height=Math.round(rect.height*scale);
-  const ctx=el.getContext('2d');ctx.scale(scale,scale);ctx.font='11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-  return {ctx,w:rect.width,h:rect.height};
-}
-function line(ctx,points,color,width=1,dash=[]) {if(!points.length)return;ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);points.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.stroke();ctx.setLineDash([]);}
-function label(ctx,text,x,y,color=C.muted,align='left') {ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(text,x,y);ctx.textAlign='left';}
-function roundRect(ctx,x,y,w,h,r=6) {ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-function noPlot(id,text) {const q=canvas(id);if(q){q.ctx.font='11px sans-serif';label(q.ctx,text,16,q.h/2);}}
-function drawSky() {
-  const d=sampleInfo();if(!d) return noPlot('skyCanvas','Check your plan to view the skyline.');
-  const q=canvas('skyCanvas');if(!q)return;const {ctx,w,h}=q,{r,i}=d;
-  const pad={l:38,r:18,t:24,b:35};
-  let min=-1,max=4;for(const v of r.profile.horizon_deg){min=Math.min(min,v-.5);max=Math.max(max,v+.7);}
-  for(const t of r.tracks) {min=Math.min(min,t.sun_elevation_deg-.5,t.earth_elevation_deg-.5);max=Math.max(max,t.sun_elevation_deg+.7,t.earth_elevation_deg+.7);}
-  const lo=Math.floor(min),hi=Math.ceil(max),X=a=>pad.l+a/360*(w-pad.l-pad.r),Y=e=>h-pad.b-(e-lo)/(hi-lo)*(h-pad.t-pad.b);
-  for(let k=0;k<=4;k++){const e=lo+(hi-lo)*k/4;line(ctx,[[pad.l,Y(e)],[w-pad.r,Y(e)]],C.grid,.8);label(ctx,fmt(e,1)+'°',pad.l-7,Y(e)+4,C.muted,'right');}
-  for(const [a,direction] of [[0,'N'],[90,'E'],[180,'S'],[270,'W'],[360,'N']]) {label(ctx,direction,X(a),h-15,C.text,'center');ctx.font='9px sans-serif';label(ctx,a+'°',X(a),h-2,C.muted,'center');ctx.font='11px sans-serif';}
-  const hp=r.profile.azimuth_deg.map((a,j)=>[X(a),Y(r.profile.horizon_deg[j])]);hp.push([X(360),Y(r.profile.horizon_deg[0])]);
-  ctx.beginPath();ctx.moveTo(X(0),Y(lo));hp.forEach(p=>ctx.lineTo(...p));ctx.lineTo(X(360),Y(lo));ctx.closePath();
-  const grad=ctx.createLinearGradient(0,Y(hi),0,Y(lo));grad.addColorStop(0,'#b5c8af');grad.addColorStop(1,'#edf2e9');ctx.fillStyle=grad;ctx.fill();line(ctx,hp,C.terrain,1.5);
-  line(ctx,[[X(0),Y(0)],[X(360),Y(0)]],'#aebbb1',1,[4,4]);
-  ctx.font='9px sans-serif';label(ctx,'HEIGHT ABOVE LOCAL HORIZONTAL',pad.l,12,C.muted);
-  for(const [body,color]of[['sun',C.sun],['earth',C.earth]]){
-    let segment=[],previous=null;
-    for(const t of r.tracks){const az=t[body+'_azimuth_deg'];if(previous!=null&&Math.abs(az-previous)>180){line(ctx,segment,color,1.5,[3,3]);segment=[];}segment.push([X(az),Y(t[body+'_elevation_deg'])]);previous=az;}
-    line(ctx,segment,color,1.5,[3,3]);
-    const t=r.tracks[i],px=X(t[body+'_azimuth_deg']),py=Y(t[body+'_elevation_deg']),visible=r.curves[body].clearance_deg[i]>0;
-    ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fillStyle=visible?color:'#fff';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
-    if(!visible)line(ctx,[[px-3,py-3],[px+3,py+3]],color,1.3);
-    ctx.font='bold 10px sans-serif';label(ctx,body==='sun'?'Sun':'Earth',Math.min(w-44,px+10),Math.max(26,py-8),color);ctx.font='11px sans-serif';
-  }
-}
-function drawTimeline() {
-  const d=sampleInfo();if(!d)return noPlot('timelineCanvas','Your visibility windows will appear after the calculation.');
-  const q=canvas('timelineCanvas');if(!q)return;const {ctx,w,h}=q,{r,i}=d,l=54,rr=14,total=r.parameters.duration_h,X=a=>l+(w-l-rr)*a/total;
-  const bands=[['Sun','sun',C.sun],['Earth','earth',C.earth],['Both','both',C.teal]];
-  bands.forEach(([name,key,color],index)=>{const y=10+index*32;ctx.fillStyle='#edf0ec';roundRect(ctx,l,y,w-l-rr,19,4);ctx.fill();for(const [a,b]of r.intervals[key]){ctx.fillStyle=color;roundRect(ctx,X(a),y,Math.max(1,X(b)-X(a)),19,Math.min(4,(X(b)-X(a))/2));ctx.fill();}label(ctx,name,l-10,y+13,C.muted,'right');});
-  const px=X(r.hours[i]);line(ctx,[[px,5],[px,106]],C.text,1.3);ctx.beginPath();ctx.moveTo(px-4,1);ctx.lineTo(px+4,1);ctx.lineTo(px,6);ctx.fillStyle=C.text;ctx.fill();
-  const tickCount=w<400?4:6;for(let j=0;j<=tickCount;j++){const t=total*j/tickCount;label(ctx,`${fmt(t,0)} h`,X(t),124,C.muted,'center');}
-}
-function drawMap() {
-  const q=canvas('mapCanvas');if(!q||!S.project)return;const {ctx,w,h}=q;
-  const sites=S.project.sites;let xmin=Math.min(...sites.map(s=>s.x_km)),xmax=Math.max(...sites.map(s=>s.x_km)),ymin=Math.min(...sites.map(s=>s.y_km)),ymax=Math.max(...sites.map(s=>s.y_km));
-  const preview=S.project.preview;const usePreview=preview?.kind==='synthetic'&&sites.every(s=>s.synthetic_terrain);
-  if(usePreview){xmin=Math.min(xmin,preview.x_km[0]);xmax=Math.max(xmax,preview.x_km.at(-1));ymin=Math.min(ymin,preview.y_km[0]);ymax=Math.max(ymax,preview.y_km.at(-1));}
-  let span=Math.max(xmax-xmin,ymax-ymin,2)*1.2,cx=(xmin+xmax)/2,cy=(ymin+ymax)/2;
-  const scale=Math.min((w-54)/span,(h-42)/span),X=x=>w/2+(x-cx)*scale,Y=y=>h/2-(y-cy)*scale;
-  ctx.fillStyle='#eef2e9';ctx.fillRect(0,0,w,h);
-  if(usePreview){
-    const xs=preview.x_km,ys=preview.y_km,z=preview.elevations_m;let low=Infinity,high=-Infinity;
-    for(const row of z)for(const v of row){low=Math.min(low,v);high=Math.max(high,v);}
-    for(let j=0;j<ys.length-1;j++)for(let k=0;k<xs.length-1;k++){
-      const fraction=(z[j][k]-low)/(high-low||1);const v=Math.round(239-fraction*62);
-      ctx.fillStyle=`rgb(${v-6},${v+1},${v-12})`;ctx.fillRect(X(xs[k]),Y(ys[j+1]),Math.max(1,X(xs[k+1])-X(xs[k])+.5),Math.max(1,Y(ys[j])-Y(ys[j+1])+.5));
-    }
-    // Marching-squares contour segments make the invented landscape easier to read.
-    for(let level=low+10;level<high;level+=10){const segments=[];
-      for(let j=0;j<ys.length-1;j++)for(let k=0;k<xs.length-1;k++){
-        const corners=[[xs[k],ys[j],z[j][k]],[xs[k+1],ys[j],z[j][k+1]],[xs[k+1],ys[j+1],z[j+1][k+1]],[xs[k],ys[j+1],z[j+1][k]]];const pts=[];
-        for(let e=0;e<4;e++){const a=corners[e],b=corners[(e+1)%4];if((a[2]<level)!==(b[2]<level)){const t=(level-a[2])/(b[2]-a[2]);pts.push([X(a[0]+t*(b[0]-a[0])),Y(a[1]+t*(b[1]-a[1]))]);}}
-        if(pts.length>=2) segments.push(pts.slice(0,2));if(pts.length===4)segments.push(pts.slice(2));
-      }
-      for(const segment of segments)line(ctx,segment,'#8fa18c66',.65);
-    }
-  }
-  for(let k=1;k<5;k++){line(ctx,[[w*k/5,0],[w*k/5,h]],'#aab8aa30',.6);line(ctx,[[0,h*k/5],[w,h*k/5]],'#aab8aa30',.6);}
-  ctx.font='9px sans-serif';ctx.fillStyle='#f9fcf8dd';roundRect(ctx,12,12,usePreview?138:136,22,4);ctx.fill();label(ctx,usePreview?'SYNTHETIC TERRAIN · LOCAL':'LOCAL COORDINATE VIEW',20,27,'#52685a');
-  line(ctx,[[w-22,44],[w-22,20]],'#657e6d',1.4);line(ctx,[[w-27,26],[w-22,20],[w-17,26]],'#657e6d',1.4);label(ctx,'N',w-22,14,'#52685a','center');
-  S.mapHits=[];
-  for(const site of sites){const x=X(site.x_km),y=Y(site.y_km),r=!S.dirty?S.analysis?.results.find(r=>r.site_id===site.id):null;
-    const color=r?.status==='pass'?C.teal:r?.status==='fail'?C.red:'#8a99a0';
-    if(site.id===S.selected){ctx.beginPath();ctx.arc(x,y,17,0,Math.PI*2);ctx.fillStyle='#ffffffb8';ctx.fill();ctx.strokeStyle='#476e5d';ctx.lineWidth=1;ctx.stroke();}
-    ctx.beginPath();ctx.arc(x,y,10,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
-    ctx.font='bold 9px sans-serif';label(ctx,site.id.length<=2?site.id:site.id.slice(0,2),x,y+3,'#fff','center');
-    if(site.id===S.selected){const name=shortName(site);ctx.font='10px sans-serif';const width=Math.min(ctx.measureText(name).width+18,w-25),lx=Math.max(8,Math.min(w-width-8,x-width/2)),ly=Math.max(42,Math.min(h-28,y+22));ctx.fillStyle='#ffffffed';roundRect(ctx,lx,ly,width,23,5);ctx.fill();ctx.save();ctx.beginPath();ctx.rect(lx,ly,width,23);ctx.clip();label(ctx,name,lx+9,ly+15,C.text);ctx.restore();}
-    S.mapHits.push({id:site.id,x,y});
-  }
-  let km=1;while(km*scale>w/4)km/=2;while(km*scale<w/9)km*=2;
-  line(ctx,[[16,h-19],[16+km*scale,h-19]],'#536b5b',2);label(ctx,fmt(km,km<1?2:0)+' km',16,h-26,'#536b5b');
-  $('mapCaption').textContent=usePreview?'Invented terrain for learning. This is not a NASA lunar image.':'Local site layout; no real terrain basemap is loaded. Distances use the spherical model.';
-}
-function drawAll() {if(S.page==='plan'){drawMap();drawSky();drawTimeline();}}
-
-function renderBaseline() {
-  const site=currentSite();if(!site)return;const p=(()=>{try{return params();}catch(_){return null;}})();
-  $('repairBaseline').innerHTML=`<div><small>YOUR STARTING LOCATION</small><b>${esc(site.name)}</b></div><div><small>LANDING</small><b>${p?prettyDate(p.start_utc,true):'Choose a date'}</b></div><div><small>MISSION / VIEWPOINT</small><b>${p?duration(p.duration_h)+' / '+fmt(p.height_m)+' m':'Not set'}</b></div><span>${current()?tag(current().status):'<span class="pill unknown">Not checked yet</span>'}</span>`;
-}
-async function runRepair() {
-  if(S.busy)return;let p;try {p=validateInputs();}catch(e){note(e.message,'error');return;}
-  for(const id of ['maxDelay','maxHeight','delayStep','heightStep','wMove','wDelay','wHeight']) if(!$(id).checkValidity()){note('Check the search settings. '+$(id).validationMessage,'error');return;}
-  const config={...p,preferred_site_id:S.selected,allow_relocation:$('allowMove').checked,
-    max_delay_h:$('allowDelay').checked?+$('maxDelay').value:0,delay_step_h:+$('delayStep').value,
-    max_height_m:$('allowHeight').checked?+$('maxHeight').value:p.height_m,height_step_m:+$('heightStep').value,
-    weight_move:+$('wMove').value,weight_delay:+$('wDelay').value,weight_height:+$('wHeight').value};
-  if(config.max_height_m<p.height_m)return note('The highest test viewpoint must be at least your starting height ('+p.height_m+' m).','error');
-  busy(true,'Testing the changes you allowed…');
-  try {
-    if(typeof ensureGeometryForMission==='function')await ensureGeometryForMission({...p,duration_h:p.duration_h+config.max_delay_h});
-    const result=await api('/api/repair',config);S.repair=result;S.repairBase={...config};
-    renderRepair(result);$('message').classList.add('hidden');await saveSettings();
-  } catch(e){note(e.message,'error');}finally{busy(false);}
-}
-function renderRepair(result) {
-  const best=result.best,p=S.repairBase;
-  $('repairSummary').className='repair-banner '+(best?'':'warn');
-  $('repairSummary').innerHTML=best?`<b>${result.passing_combinations} of ${result.tested_combinations} tested combinations pass.</b> The smallest tested change is <b>${esc(best.site_name)}</b>. ${result.missing_combinations?`${result.missing_combinations} combinations could not be evaluated because of missing or incompatible data.`:''} Calculated in ${fmt(result.runtime_s,2)} s.`:`<b>No passing option was found in this search.</b> ${result.evaluated} combinations were evaluated; ${result.missing_combinations} could not be checked. This does not prove no feasible plan exists. Try other candidate sites, a different search range, or complete the missing data.`;
-  // Offer varied candidates, not three nearly identical height increments.
-  const displayed=[],seen=new Set();
-  for(const option of [...(result.pareto||[]),...result.alternatives].sort((a,b)=>a.cost-b.cost)){
-    if(!displayed.length||!seen.has(option.site_id)) {displayed.push(option);seen.add(option.site_id);}if(displayed.length===3)break;
-  }
-  if(displayed.length<3)for(const option of result.alternatives){if(!displayed.some(a=>a.site_id===option.site_id&&a.delay_h===option.delay_h&&a.height_m===option.height_m)) displayed.push(option);if(displayed.length===3)break;}
-  S.displayedOptions=displayed;
-  $('repairOptions').innerHTML=displayed.map((o,index)=>`<article class="option-card ${index===0?'best':''}"><div class="eyebrow">${index===0?'LOWEST TESTED CHANGE COST':'ANOTHER TESTED OPTION'}</div><h3>${esc(shortName({name:o.site_name}))}</h3><div class="option-change"><span>Move from your site</span><b>${o.move_km<.00001?'Stay here':fmt(o.move_km,2)+' km'}</b></div><div class="option-change"><span>Delay the landing</span><b>${o.delay_h?fmt(o.delay_h,0)+' hours':'Keep the date'}</b></div><div class="option-change"><span>Viewpoint height</span><b>${fmt(o.height_m)} m ${o.height_increase_m?'(+'+fmt(o.height_increase_m)+')':'(unchanged)'}</b></div><div class="option-change"><span>Longest darkness</span><b>${fmt(o.metrics.longest_dark_h)} h</b></div><div class="option-change"><span>Longest Earth gap</span><b>${fmt(o.metrics.longest_earth_gap_h)} h</b></div><p>Passes the enabled limits in this model. Preference cost: ${fmt(o.cost,3)}.</p><button class="button ${index===0?'primary':'ghost'}" data-option="${index}">Inspect this option →</button></article>`).join('');
-  const siteIDs=result.envelope.map(cell=>cell.site_id);const sites=S.project.sites.filter(site=>siteIDs.includes(site.id));
-  $('envelope').innerHTML=`<table><thead><tr><th>LOCATION / LANDING DELAY</th>${result.delays_h.map(h=>`<th>+${fmt(h,0)} h</th>`).join('')}</tr></thead><tbody>${sites.map(site=>`<tr><td>${esc(site.name)}</td>${result.delays_h.map(delay=>{const c=result.envelope.find(c=>c.site_id===site.id&&c.delay_h===delay)||{status:'unknown',reason:'Not evaluated'};return `<td><button class="envelope-cell ${c.status}" data-envelope-site="${esc(site.id)}" data-delay="${delay}" title="${esc(c.reason||'All selected checks pass')}" aria-label="${esc(site.name)}, ${delay} hours later, ${c.status}">${c.status==='pass'?'✓ Pass':c.status==='fail'?'↗ Change':'? Data'}</button></td>`;}).join('')}</tr>`).join('')}</tbody></table>`;
-  $('repairTable').innerHTML=result.alternatives.length?`<table><thead><tr><th>LOCATION</th><th>MOVE</th><th>DELAY</th><th>HEIGHT</th><th>PREFERENCE COST</th><th></th></tr></thead><tbody>${result.alternatives.map((o,i)=>`<tr><td>${esc(o.site_name)}</td><td>${fmt(o.move_km,2)} km</td><td>${fmt(o.delay_h,0)} h</td><td>${fmt(o.height_m)} m</td><td>${fmt(o.cost,3)}</td><td><button class="table-button" data-all-option="${i}">Inspect →</button></td></tr>`).join('')}</tbody></table>`:'<p class="field-note">No passing option in the tested set.</p>';
-  $('searchScope').textContent=`${result.tested_combinations} tested combinations · ${result.heights_m.length} heights · ${result.delays_h.length} landing times. No global optimum is claimed.`;
-}
-async function applyOption(option) {
-  if(S.busy||!option)return;S.originalPlan={site:S.selected,fields:uiState().fields};
-  clearRepair();
-  S.selected=option.site_id;$('siteSelect').value=option.site_id;$('start').value=option.start_utc.slice(0,16);$('height').value=option.height_m;
-  S.dirty=true;renderSiteDetails();setPage('plan');await runAnalysis({scroll:true});
-  note('You are inspecting an alternative. Your original inputs can be restored with the button below.','success');
-  const button=document.createElement('button');button.className='text-button';button.textContent='Return to my original plan';button.style.marginLeft='12px';button.addEventListener('click',restoreOriginal);$('message').appendChild(button);
-}
-async function restoreOriginal(){if(!S.originalPlan)return;const before=S.originalPlan;S.originalPlan=null;clearRepair();restoreSettings({selected_site_id:before.site,fields:before.fields});await runAnalysis();}
-function renderSources() {
-  $('sourceTable').innerHTML=`<table><thead><tr><th>LOCATION</th><th>TERRAIN</th><th>SUN & EARTH</th><th>READINESS</th></tr></thead><tbody>${S.project.sites.map(site=>{
-    const terrain=!!site.terrain_kind,track=site.track_mode==='synthetic'||(site.track_mode==='imported'&&!!site.track_start);
-    return `<tr><td>${esc(site.name)}<div class="field-note">${fmt(site.latitude_deg,4)}°, ${fmt(site.longitude_deg,4)}° E</div></td><td class="source-cell"><span class="pill ${!terrain?'unknown':site.synthetic_terrain?'fail':'pass'}">${!terrain?'Not added':site.synthetic_terrain?'Synthetic':'User supplied'}</span><br>${esc(site.terrain_source||'Add a skyline CSV or converted terrain bundle.')}${site.fixed_height_m!=null?`<br>Fixed viewpoint: ${fmt(site.fixed_height_m)} m`:''}</td><td class="source-cell"><span class="pill ${!track?'unknown':site.track_mode==='synthetic'||site.track_synthetic?'fail':'pass'}">${!track?'Not added':site.track_mode==='synthetic'||site.track_synthetic?'Synthetic':(site.geometry_engine==='spice'?'NASA SPICE':site.geometry_engine==='horizons'?'JPL Horizons':'Imported')}</span><br>${esc(site.track_source||'Add a time series or prepare Sun/Earth data.')}${site.track_start?`<br>${esc(site.track_start)} to ${esc(site.track_end)}`:''}</td><td>${terrain&&track?'<span class="pill pass">✓ Inputs present</span>':'<span class="pill unknown">? Needs input</span>'}<div class="field-note">Slope: ${site.slope_deg==null?'not supplied':site.slope_synthetic?'synthetic':'user supplied'}</div></td></tr>`;
-  }).join('')}</tbody></table>`;
-}
-function renderImpact() {
-  const box=$('impactBox');if(!S.prior||!S.analysis||S.dirty){box.classList.add('hidden');return;}
-  const rows=[];
-  for(const now of S.analysis.results){const before=S.prior.results.find(r=>r.site_id===now.site_id);if(!before?.metrics||!now.metrics)continue;
-    rows.push(`<tr><td>${esc(now.site_name)}</td><td>${tag(before.status)} → ${tag(now.status)}</td><td>${fmt(now.metrics.sunlight_pct-before.metrics.sunlight_pct,2)} points</td><td>${fmt(now.metrics.longest_dark_h-before.metrics.longest_dark_h,2)} h</td></tr>`);}
-  if(!rows.length)return box.classList.add('hidden');
-  const same=JSON.stringify(S.prior.parameters)===JSON.stringify(S.analysis.parameters);box.classList.remove('hidden');
-  box.innerHTML=`<div class="eyebrow">WHAT CHANGED?</div><h3>Before and after your data update</h3><p class="field-note">${same?'Mission settings are unchanged, so this comparison shows the effect of the data update.':'Mission settings also changed. These differences cannot be attributed to the new data alone.'}</p><div class="table-wrap"><table><thead><tr><th>LOCATION</th><th>RESULT</th><th>SUNLIGHT CHANGE</th><th>LONGEST DARKNESS CHANGE</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
-}
-function csvHelp() {
-  const kind=$('csvKind').value;
-  const help={
-    horizon:['One row for each direction around the site. Use a complete 360° skyline. This profile only works at its declared viewpoint height.','azimuth_deg,horizon_deg','example_horizon_SYNTHETIC.csv'],
-    ephemeris:['One row per UTC time, with directions for both Sun and Earth. Times must be increasing and cover the entire requested mission.','time_utc,sun_azimuth_deg,sun_elevation_deg,earth_azimuth_deg,earth_elevation_deg','example_ephemeris_SYNTHETIC.csv'],
-    attributes:['Each row updates the slope of an existing site ID. Unknown IDs are rejected. This adds a slope value, not a hazard or safety certification.','site_id,slope_deg','example_site_slopes.csv']};
-  const [text,columns,file]=help[kind];
-  $('csvHelp').innerHTML=`${text}<code>${columns}</code><a href="./samples/${file}" download>Download a matching synthetic example ↓</a>`;
-  $('csvHeightField').classList.toggle('hidden',kind!=='horizon');$('csvRangeField').classList.toggle('hidden',kind!=='horizon');$('csvGapField').classList.toggle('hidden',kind!=='ephemeris');
-}
-async function dataAction(label,fn,{restore=false}={}) {
-  if(S.busy)return;busy(true,label);
-  try {
-    const response=await fn();S.prior=S.analysis||S.prior;S.analysis=null;S.dirty=false;stopPlayback();clearRepair();
-    projectUpdated(response.project,restore);renderSelected();renderCompare();$('impactBox').classList.add('hidden');
-    $('settingsNote').textContent='Data changed. Check your plan again to calculate the new result.';$('settingsDot').classList.add('dirty');
-    note(response.message||'Data added. Check your plan again to update the results.','success');await saveSettings();
-  } catch(e){note(e.message,'error');}finally{busy(false);}
-}
-function download(name,text,type='application/json') {
-  const anchor=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));anchor.href=url;anchor.download=name;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
-}
-function csvSafe(value) {let str=String(value??'');if(/^[=+@\-]/.test(str))str="'"+str;return '"'+str.replace(/"/g,'""')+'"';}
-function exportResults() {
-  if(!S.analysis||S.dirty)return note('Check your current plan before exporting results.','warn');
-  const fields=['site_id','site_name','status','sunlight_pct','longest_dark_h','earth_visible_pct','longest_earth_gap_h','terrain_source','track_source','synthetic_terrain','synthetic_track','synthetic_slope','slope_source','start_utc','duration_h','height_m'];
-  const lines=S.analysis.results.map(result=>{const flat={...result,...result.metrics,...S.analysis.parameters};return fields.map(k=>csvSafe(flat[k])).join(',');});
-  download('LunaShift_results.csv',fields.join(',')+'\n'+lines.join('\n'),'text/csv');
-}
-async function exportProject() {
-  try {await saveSettings();const p=await api('/api/export');const stamp=new Date().toISOString().slice(0,19).replace(/:/g,'-');download('LunaShift_workspace_'+stamp+'.json',JSON.stringify(p,null,2));note('A project JSON was downloaded. It includes the data and mission settings. Share it with your team or open it again in Data & Sources.','success');}
-  catch(e){note(e.message,'error');}
-}
-const HELP={
-  skyline:['Reading the skyline','Imagine standing at the selected site and turning in a full circle. The green shape is the terrain that fills your view. The Sun and Earth must appear above that skyline, plus any clearance margin you chose. A hollow marker means the visibility test does not pass.','North 0° → East 90° → South 180° → West 270°'],
-  dates:['Reading the date explorer','Each cell asks: “If we start the complete mission this many hours later, do all enabled checks pass?” The grid uses your original viewpoint height. Green Pass is not a safety certificate; it is a result under the data and limits you selected.','Pick a cell → inspect that site and landing time'],
-  sources:['Real data and synthetic data','The first project uses invented terrain and invented Sun/Earth curves. It is a teaching example. Real Horizons tracks only replace the tracks, not the terrain. Both sources, time coverage, and coordinate frames must be checked before a result can be used beyond learning.','Location + terrain + tracks → visibility estimate']
-};
-function openHelp(key){const [title,text,diagram]=HELP[key]||HELP.skyline;$('dialogEyebrow').textContent='PLAIN-ENGLISH EXPLANATION';$('dialogContent').innerHTML=`<h2>${title}</h2><p>${text}</p><div class="tour-diagram">${diagram}</div>`;$('dialogActions').innerHTML='<button class="button primary" data-dialog-close>Got it</button>';if(!$('helpDialog').open)$('helpDialog').showModal();}
-const TOUR=[
-  ['Welcome to a clearer workspace.','Start with the included example. You do not need NASA files to learn the controls. The amber banner always tells you when inputs are synthetic.','plan','Start with an example → replace the data when ready'],
-  ['Choose a place, a time, and your limits.','The three numbered blocks are all you need for a first run. Technical settings are tucked under “More settings.” Select Calculate mission results after making a change.','plan','1 Place → 2 Time → 3 Limits'],
-  ['Read the answer before the charts.','The result tells you whether the enabled checks pass. The four numbers explain sunlight, darkness, Earth visibility, and the longest Earth-hidden gap. Use the timeline to see why.','plan','Result → numbers → visual explanation'],
-  ['Explore a better option.','You decide which changes are allowed. The app tests candidate locations, delays, and heights. Inspecting an option changes the inputs; you can then return to your original plan.','repair','Choose allowed changes → test → inspect'],
-  ['Bring your team and your data.','Use Data & Sources to open a project or add a layer. Save a copy downloads your data and settings. Local autosave helps on your Mac; Colab storage is temporary, so download your work.','data','Save a project JSON → share → reopen']
+import {initPlannerExperience} from './planner-experience.js';
+import {drawMissionChart} from './planner-chart.js';
+import {OverviewController} from './overview.js';
+import {PolarScene} from './polar-scene.js';
+import {skyAt,skyRange,ephemerisBounds,missionVisibility,scanSkyWindows,makeSkyPaths,findWindow,unionDuration,advanceClock,HOUR_MS} from './sky-model.js';
+import {drawCelestial, onSkyImagesReady} from './sky-visuals.js';
+import {MISSION_DEFAULTS,STATIONS,eventCountdown} from './mission-model.js';
+import {missionChecks,buildSearchPlan,rankChoices,recommendChoice,invariantWarnings,lunarDistanceKm} from './decision-model.js';
+import {sampleAtHour,dataFlowVisible,A_COLOR,B_COLOR} from './visual-geometry.js';
+import {ComparisonScene} from './comparison-scene.js';
+import {GUIDE_HTML,NOTES_HTML} from './help-content.js';
+const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf=(n,d=1)=>Number.isFinite(n)?n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+const hours=n=>n===null||!Number.isFinite(n)?'Not reached':`${nf(n,2)} h`;
+const date=x=>new Date(x).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC',hour12:false});
+const dateShort=x=>new Date(x).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+const name=s=>s?.name?.replace('Connecting Ridge · ','')||'—';
+const state={bundle:null,worker:null,current:null,alternative:null,role:'current',view:'mission',chart:'battery',searchMode:'both',choices:[],recommendation:null,dirty:false,busy:false,searching:false,revision:0,adopted:false,hour:0,phase:0,playing:false,page:'overview',present:false,searchEpoch:0,scene:null,mapScene:null,loadPromise:null,lastOpenedFocus:null,polar:null,clockMode:'mission',skySamples:{},windowCache:new Map(),pathCache:new Map(),liveAnchor:null,skyAnchor:null,lastMissionHour:0,playStopHour:null,livePausedMs:null,serverOnline:false};
+let experience=null;
+let homeScene=null,homePromise=null,bundlePromise=null,workerSerial=0,workerReady=null,pending=new Map(),toastTimer,animationFrame,lastFrame=0;
+const FIELD_SECTIONS=[
+ {title:'Mission requirements',open:true,items:[['taskEnergyKWh','Task energy · kWh',0,1e6,.1],['energyDeadlineHours','Energy deadline · h',0,8784,1],['dataTargetGB','Data to send · GB',0,1e6,.1],['dataDeadlineHours','Data deadline · h',0,8784,1]],note:'Deadlines are hours after landing. Task energy must be stored above reserve.'},
+ {title:'Solar array',open:true,items:[['panelMode','Panel orientation',[['horizontal','Fixed horizontal'],['fixed','Fixed tilt / azimuth'],['vertical_tracking','Vertical · follows Sun azimuth'],['tracking','Ideal · faces the Sun']],true],['areaM2','Panel area · m²',.01,1e5,.1],['heightM','Collector height · m',0,1000,.5],['efficiency','Cell efficiency · %',1,100,1,.01],['lossFactor','Retained output · %',1,100,1,.01],['tiltDeg','Fixed tilt · degrees',0,180,1],['azimuthDeg','Fixed azimuth · degrees',0,360,1]]},
+ {title:'Battery & demand',items:[['batteryKWh','Capacity · kWh',0,1e6,.1],['loadW','Base demand · W',0,1e6,10],['initialSocPct','Initial charge · %',0,100,1],['reservePct','Minimum reserve · %',0,100,1],['payloadW','Extra payload · W',0,1e6,10],['payloadStartHours','Payload starts · h',0,8784,1],['payloadDurationHours','Payload lasts · h',0,8784,1]],note:'Radio electrical demand is added automatically. Payload demand is optional and separate from the energy-readiness target.'},
+ {title:'Earth communication',items:[['stationId','Earth reference station',STATIONS.map(s=>[s.id,s.name]),true],['antennaHeightM','Antenna height · m',0,1000,.5],['txPowerW','RF transmit power · W',.001,1e6,1],['txGainDbi','Lander gain · dBi',-20,100,1],['maxRateMbps','Rate cap · Mbps',.000001,10000,.1],['frequencyGHz','Frequency · GHz',.01,100,.1],['groundGT','Ground G/T · dB/K',-50,100,1]],note:'Earth visibility alone is insufficient. Both station geometry and the link budget are checked.'},
+ {title:'Advanced assumptions',items:[['earthMaskDeg','Station elevation mask · °',0,90,1],['lunarClearanceDeg','Lunar clearance · °',0,20,.1],['lossDb','Radio losses · dB',0,100,.5],['fadeMarginDb','Fade margin · dB',0,100,.5],['requiredEbN0Db','Required Eb/N₀ · dB',-10,60,.5],['amplifierEfficiency','Amplifier efficiency · %',.1,100,1,.01],['protocolEfficiency','Protocol efficiency · %',.01,100,1,.01],['radioOverheadW','Radio overhead · W',0,1e6,1],['chargeEfficiency','Charge efficiency · %',1,100,1,.01],['dischargeEfficiency','Discharge efficiency · %',1,100,1,.01],['stepMinutes','Time step · minutes',[[1,'1 minute'],[5,'5 minutes'],[15,'15 minutes'],[30,'30 minutes']],true]],note:'The rate is an ideal adaptive estimate capped by the radio maximum. A negative margin at the cap can reduce rate rather than prohibit transmission.'}
 ];
-function startTour(){S.tourIndex=0;showTour();}
-function showTour(){const [title,text,page,diagram]=TOUR[S.tourIndex];setPage(page);$('dialogEyebrow').textContent='GUIDED TOUR';$('dialogContent').innerHTML=`<div class="tour-step-count">${S.tourIndex+1} of ${TOUR.length}</div><h2>${title}</h2><p>${text}</p><div class="tour-diagram">${diagram}</div>`;$('dialogActions').innerHTML=`<button class="button ghost" ${S.tourIndex?'data-tour-back':'data-dialog-close'}>${S.tourIndex?'Back':'Skip tour'}</button><button class="button primary" ${S.tourIndex===TOUR.length-1?'data-tour-done':'data-tour-next'}>${S.tourIndex===TOUR.length-1?'Start exploring':'Next →'}</button>`;if(!$('helpDialog').open)$('helpDialog').showModal();}
-function openReport() {
-  const r=current();if(!r?.metrics)return note('Check a complete plan before making a report.','warn');
-  const m=r.metrics;$('dialogEyebrow').textContent='SHARE YOUR RESULT';
-  $('dialogContent').innerHTML=`<h2>Mission report</h2><p>${esc(r.site_name)} · ${prettyDate(r.parameters.start_utc)} · ${duration(r.parameters.duration_h)}</p>${tag(r.status)}<div class="report-metrics"><div>Sunlight<b>${fmt(m.sunlight_pct)}%</b></div><div>Longest darkness<b>${fmt(m.longest_dark_h)} h</b></div><div>Earth visible<b>${fmt(m.earth_visible_pct)}%</b></div><div>Longest Earth gap<b>${fmt(m.longest_earth_gap_h)} h</b></div></div><p>The report includes sources, mission settings, comparison results, chart snapshots, and model limitations. It is a standalone HTML file; open it in a browser and use Print to save a PDF.</p>`;
-  $('dialogActions').innerHTML='<button class="button ghost" data-dialog-close>Close</button><button class="button primary" data-download-report>Download report ↓</button>';
-  if(!$('helpDialog').open)$('helpDialog').showModal();
+const fields=FIELD_SECTIONS.flatMap(s=>s.items);
+function buildInputs(){
+ $('inputSections').innerHTML=FIELD_SECTIONS.map((sec,i)=>`<details class="setting-section" ${sec.open?'open':''}><summary>${esc(sec.title)}</summary><div class="setting-fields">${sec.items.map(f=>{const [key,label,kind,hi,step,factor]=f;return `<label class="${Array.isArray(kind)&&hi?'wide':''}" ${['tiltDeg','azimuthDeg'].includes(key)?'data-fixed-field':''}>${esc(label)}${Array.isArray(kind)?`<select id="${key}">${kind.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select>`:`<input id="${key}" type="number" min="${kind}" max="${hi}" step="any" required ${factor?`data-factor="${factor}"`:''}>`}</label>`;}).join('')}${sec.note?`<p class="fields-note">${sec.note}</p>`:''}</div></details>`).join('');
 }
-function reportHTML(){
-  const r=current(),p=r.parameters,m=r.metrics;const images={};
-  if(S.page==='plan'){drawAll();for(const id of ['mapCanvas','skyCanvas','timelineCanvas']) images[id]=$(id).toDataURL('image/png');}
-  const rows=S.analysis.results.map(x=>`<tr><td>${esc(x.site_name)}</td><td>${esc(x.status)}</td><td>${fmt(x.metrics?.sunlight_pct)}%</td><td>${fmt(x.metrics?.longest_dark_h)} h</td><td>${fmt(x.metrics?.earth_visible_pct)}%</td><td>${fmt(x.metrics?.longest_earth_gap_h)} h</td></tr>`).join('');
-  const paramsRows=Object.entries(p).map(([key,value])=>`<tr><td>${esc(key)}</td><td>${esc(value)}</td></tr>`).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LunaShift mission report</title><style>body{font:14px/1.65 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#193640;max-width:1000px;padding:40px;margin:auto}h1{font-size:34px;letter-spacing:-1px}h2{font-size:20px;margin-top:30px}.notice{background:#fff3de;border:1px solid #ead7b2;padding:15px;border-radius:8px}.metrics{display:flex;gap:15px;flex-wrap:wrap}.metrics>div{background:#f0f5f1;padding:18px;min-width:180px;border-radius:10px}.metrics b{font-size:27px;display:block}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#f4f6f4}img{width:100%;object-fit:contain}figure{margin:20px 0;break-inside:avoid}figcaption{font-size:11px;color:#687b80}footer{font-size:11px;color:#657b80;border-top:1px solid #ddd;margin-top:30px}@media print{body{padding:0;font-size:11px}h2{break-after:avoid}.metrics,table{break-inside:avoid}}</style></head><body><small>LUNASHIFT / MISSION PLANNER / v0.5.0</small><h1>${esc(r.site_name)}</h1><p>Landing: ${prettyDate(p.start_utc)} · Duration: ${duration(p.duration_h)} · Viewpoint: ${fmt(p.height_m)} m</p><div class="notice"><b>${r.synthetic_terrain||r.synthetic_track||r.synthetic_slope?'SYNTHETIC OR MIXED INPUTS — NOT A LUNAR FORECAST':'USER-SUPPLIED INPUTS — SCIENTIFIC VALIDATION REQUIRED'}</b><br>Independent learning prototype. Status “pass” means enabled modeled limits pass, not mission certification.</div><h2>${r.status==='pass'?'Within your selected limits':r.status==='fail'?'This plan needs a change':'Missing information'}</h2><p>${esc(r.reasons.join(' ')||'All enabled checks pass for this dataset.')}</p><div class="metrics"><div>Sunlight<b>${fmt(m.sunlight_pct)}%</b></div><div>Longest darkness<b>${fmt(m.longest_dark_h)} h</b></div><div>Earth visible<b>${fmt(m.earth_visible_pct)}%</b></div><div>Longest Earth gap<b>${fmt(m.longest_earth_gap_h)} h</b></div></div>${Object.entries(images).map(([id,src])=>`<figure><img src="${src}" alt="${id}"><figcaption>${id==='mapCanvas'?'Local site layout. Synthetic terrain is labeled.':id==='skyCanvas'?'Terrain skyline and body-centre directions at the selected time.':'Visibility timeline inside the selected mission.'}</figcaption></figure>`).join('')}<h2>Candidate comparison</h2><table><thead><tr><th>Site</th><th>Modeled status</th><th>Sunlight</th><th>Max darkness</th><th>Earth visible</th><th>Max Earth gap</th></tr></thead><tbody>${rows}</tbody></table><h2>Data provenance</h2><p><b>Terrain:</b> ${esc(r.terrain_source)}<br><b>Tracks:</b> ${esc(r.track_source)}<br><b>Slope:</b> ${esc(r.slope_source)}<br><b>Terrain range:</b> ${fmt(r.profile.range_limit_m/1000,2)} km; beyond this range is not verified.</p><h2>Calculation settings</h2><table>${paramsRows}</table><h2>Model limitations</h2><p>Spherical lunar geometry, sampled finite-range terrain, body-centre visibility, one shared Sun/Earth viewpoint height, and piecewise-linear time crossings. Short events may be missed. This visibility section is not an energy or radio-link calculation. Power & Communications adds separate, assumption-dependent engineering estimates when calculated. There is no flight certification, live station schedule, validated thermal model or global-optimality guarantee.</p><footer>Generated ${prettyDate(new Date().toISOString())}. Sharing this report does not share the running application. Save the workspace JSON to reproduce the data and settings.</footer></body></html>`;
+function writeSettings(settings={}){const s={...MISSION_DEFAULTS,...settings};$('siteId').value=s.siteId;$('startUTC').value=s.startUTC.slice(0,16);$('durationDays').value=s.durationHours/24;for(const [key,,,,,factor]of fields){if($(key))$(key).value=typeof s[key]==='number'?+(s[key]/(factor||1)).toFixed(6):s[key];}showFixed();updateCoordinates();}
+function readSettings(){const s={...MISSION_DEFAULTS,siteId:$('siteId').value,startUTC:$('startUTC').value+':00Z',durationHours:Number($('durationDays').value)*24};for(const [key,,,,,factor]of fields){const el=$(key);s[key]=['panelMode','stationId'].includes(key)?el.value:Number((Number(el.value)*(factor||1)).toPrecision(12));}return s;}
+function showFixed(){document.querySelectorAll('[data-fixed-field]').forEach(el=>el.hidden=$('panelMode').value!=='fixed');}
+function updateCoordinates(){const s=state.bundle?.sites.find(x=>x.id===$('siteId').value);if(!s)return;$('coordinates').textContent=`${Math.abs(s.latitude_deg).toFixed(5)}° ${s.latitude_deg<0?'S':'N'} · ${Math.abs(s.longitude_deg).toFixed(5)}° ${s.longitude_deg<0?'W':'E'}`;}
+function toast(text,error=false){$('toast').textContent=text;$('toast').className='toast visible'+(error?' error':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').className='toast',6000);}
+function notice(text,error=false){$('formNotice').hidden=!text;$('formNotice').textContent=text;$('formNotice').className='form-notice'+(error?' error':'');}
+async function getBundle(){
+ if(!bundlePromise)bundlePromise=fetch('data/lunar-data.json').then(r=>{if(!r.ok)throw new Error('The packaged dataset could not be opened.');return r.json();}).catch(e=>{bundlePromise=null;throw e;});
+ return bundlePromise;
+}
+async function route(page){
+ state.page=page==='planner'?'planner':'overview';
+ document.body.dataset.page=state.page;
+ document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!=='page-'+state.page);
+ document.querySelectorAll('nav [data-page]').forEach(a=>{a.classList.toggle('active',a.dataset.page===state.page);if(a.dataset.page===state.page)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+ if(location.hash!=='#'+state.page)history.replaceState(null,'','#'+state.page);
+ if(state.page==='planner'){
+  homeScene?.setActive(false);await load();state.scene?.resize();state.mapScene?.resize();state.polar?.setActive(['polar','sky'].includes(state.view));state.polar?.resize();drawAll();
+ }else{
+  stop();state.polar?.setActive(false);await initHome();homeScene?.setActive(state.page==='overview');homeScene?.resize();
+ }
+}
+async function initHome(){
+ if(homeScene)return;
+ if(homePromise)return homePromise;
+ homePromise=(async()=>{try{
+  homeScene=new OverviewController($('homeCanvas'),await getBundle());
+  window.LunaShiftOverview=homeScene;
+  homeScene.setActive(state.page==='overview');
+ }catch(e){$('homeLoading').hidden=true;$('homeError').hidden=false;$('homeError').textContent='The sky view could not load: '+e.message;homePromise=null;throw e;}})();
+ return homePromise;
+}
+async function load(){if(state.bundle)return;if(state.loadPromise)return state.loadPromise;state.loadPromise=(async()=>{try{state.bundle=await getBundle();$('siteId').innerHTML=state.bundle.sites.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');buildInputs();writeSettings();$('loadState').hidden=true;$('appBody').hidden=false;$('sceneNorth').hidden=false;state.scene=new ComparisonScene($('terrainCanvas'),$('sceneOverlay'),state.bundle,focus,{showSky:false,defaultCamera:'close'});state.mapScene=new ComparisonScene($('mapCanvas'),$('mapOverlay'),state.bundle,focus,{showSky:false,showDirections:false,defaultCamera:'wide'});state.mapScene.setMode('map');state.polar=new PolarScene($('polarCanvas'),{onPick:focus});$('rendererStatus').textContent=`${state.scene.rendererName} + synchronized 2D map`;$('coverageLine').textContent=`${state.bundle.sites.length} numerical study sites · 2026–2027`;$('dataTerrainDetail').textContent=`${state.bundle.sites.length} prepared numerical study locations`;$('dataEphemerisDetail').textContent=`${dateShort(state.bundle.ephemeris.start_utc)} to ${dateShort(state.bundle.ephemeris.end_utc)}`;updateScope();await detectServer();await initWorker();await calculateCurrent();setView(state.view);state.scene.setCameraPreset('close');}catch(e){$('loadState').hidden=false;$('loadState').textContent=e.message;toast(e.message,true);state.loadPromise=null;throw e;}})();return state.loadPromise;}
+function initWorker(){state.worker?.terminate();for(const job of pending.values())job.reject(new Error('Operation cancelled.'));pending.clear();state.worker=new Worker(new URL('./worker.bundle.js',import.meta.url));return new Promise((resolve,reject)=>{workerReady={resolve,reject};state.worker.onmessage=({data:d})=>{if(d.type==='ready'){workerReady?.resolve();workerReady=null;return;}if(d.type==='searchProgress'){if(state.searching){$('searchProgress').value=d.total?d.done/d.total*100:0;$('progressText').textContent=`${d.done} / ${d.total} combinations`;}return;}const job=pending.get(d.id);if(!job)return;pending.delete(d.id);if(d.type==='error')job.reject(new Error(d.message));else job.resolve(d);};state.worker.onerror=e=>{workerReady?.reject(new Error(e.message));for(const j of pending.values())j.reject(new Error(e.message||'Calculation worker stopped.'));pending.clear();setBusy(false);};state.worker.postMessage({type:'init',bundle:state.bundle});});}
+function callWorker(type,payload={}){return new Promise((resolve,reject)=>{const id=++workerSerial;pending.set(id,{resolve,reject});state.worker.postMessage({type,id,...payload});});}
+function setBusy(value){state.busy=value;$('checkPlan').disabled=value||state.searching;$('findOption').disabled=value||state.searching;$('runSearch').disabled=value||state.searching;$('sceneBusy').hidden=!value;}
+function setSearchBusy(value){state.searching=value;$('progressArea').hidden=!value;$('checkPlan').disabled=value||state.busy;$('findOption').disabled=value||state.busy;$('runSearch').disabled=value||state.busy;$('adoptAlternative').disabled=value;}
+function validForm(){const invalid=[...$('missionForm').querySelectorAll(':invalid')].find(x=>!['maxDelay','dateStep','priority'].includes(x.id));if(!invalid)return true;let p=invalid.parentElement;while(p){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}invalid.scrollIntoView({block:'center',behavior:'smooth'});invalid.reportValidity();return false;}
+function dirty(){if(!state.bundle)return;state.revision++;state.dirty=true;state.adopted=false;state.alternative=null;state.choices=[];state.recommendation=null;state.windowCache.clear();state.pathCache.clear();stop();if(state.searching)cancelSearch(false);$('appBody').classList.add('dirty');$('currentCard').innerHTML='<span class="role-chip role-a">A · CURRENT</span><h3>Settings have changed.</h3><p>Check the current plan to update the scene and mission results.</p>';clearAlternative();notice('Settings changed. Press Check current plan before using these results.');updateCoordinates();showFixed();updateScope();experience?.clear();}
+async function calculateCurrent(){if(state.busy||!state.bundle||!validForm())return false;stop();const rev=state.revision,settings=readSettings();setBusy(true);notice('');try{const {result}=await callWorker('calculate',{settings});if(rev!==state.revision)return false;state.current=result;state.alternative=null;state.choices=[];state.recommendation=null;state.role='current';state.hour=0;state.clockMode='mission';state.skyAnchor=null;state.lastMissionHour=0;state.adopted=false;state.dirty=false;$('appBody').classList.remove('dirty');renderCurrent();clearAlternative();updateScene();updateTime(0);$('searchFeedback').textContent='';updateScope();return true;}catch(e){notice(e.message,true);toast(e.message,true);return false;}finally{setBusy(false);}}
+function card(result,role){const m=result.metrics,s=result.settings,checks=missionChecks(m,s),pass=checks.filter(c=>c.pass).length;return`<span class="role-chip ${role==='current'?'role-a':'role-b'}">${role==='current'?'A · CURRENT':'B · ALTERNATIVE'}</span><h3 title="${esc(result.site.name)}">${esc(name(result.site))}</h3><div class="plan-date">${date(s.startUTC)} UTC · ${nf(s.durationHours/24,0)} days</div><div class="plan-verdict ${m.feasible?'pass':'fail'}">${m.feasible?'✓ All mission checks pass':`! ${pass} of 4 checks pass`}</div><div class="plan-checks">${checks.map(c=>`<span class="${c.pass?'pass':'fail'}">${c.pass?'✓':'!'} ${esc(c.label)}</span>`).join('')}</div><div class="mini-metrics"><div><strong>${nf(m.energyKWh)} <small>kWh generated</small></strong></div><div><strong>${nf(m.minSocPct)}%<small>lowest battery charge</small></strong></div></div>`;}
+
+function renderCurrent(){if(!state.current)return;$('currentCard').innerHTML=card(state.current,'current');$('sceneTitle').textContent='Connecting Ridge';if(!state.current.site.name.startsWith('Connecting Ridge'))$('sceneTitle').textContent=state.current.site.name;experience?.render();}
+function expandSearch(expand=true){$('searchBox').classList.toggle('compact',!expand);$('searchExpand').hidden=expand;$('searchExpand').setAttribute('aria-expanded',String(expand));$('searchHeadingText').textContent=expand?'What can change?':'Allowed search · '+({sites:'location',dates:'date',both:'location + date'})[state.searchMode];}
+function clearAlternative(){expandSearch(true);$('alternativeCard').className='plan-card alternative-card empty';$('alternativeCard').innerHTML='<span class="role-chip role-b">B · ALTERNATIVE</span><h3>A different location or date.</h3><p>Run the comparison to see whether another tested choice meets the same mission requirements.</p>';$('alternativeLegend').hidden=true;$('comparisonSummary').hidden=true;$('choiceActions').hidden=true;$('otherOptions').hidden=true;$('focusAlternative').disabled=true;experience?.render();}
+function comparisonDelta(a,b){return{days:(Date.parse(b.settings.startUTC)-Date.parse(a.settings.startUTC))/86400000,km:lunarDistanceKm(a.site,b.site),same:a.site.id===b.site.id};}
+function explainDelta(a,b){const out=[],ma=a.metrics,mb=b.metrics;if(mb.minSocPct>ma.minSocPct+.1)out.push(`The minimum battery charge rises from ${nf(ma.minSocPct)}% to ${nf(mb.minSocPct)}%.`);if(mb.dataAtDeadlineGB>ma.dataAtDeadlineGB+.001)out.push(`Data delivered by the deadline increases from ${nf(ma.dataAtDeadlineGB,2)} to ${nf(mb.dataAtDeadlineGB,2)} GB.`);if(mb.longestNoSunHours<ma.longestNoSunHours-.1)out.push(`The longest no-sun interval falls from ${nf(ma.longestNoSunHours)} to ${nf(mb.longestNoSunHours)} hours.`);if(mb.taskReadyHour!==null&&(ma.taskReadyHour===null||mb.taskReadyHour<ma.taskReadyHour-.1))out.push(`Task energy is stored above reserve after ${hours(mb.taskReadyHour)}.`);if(!out.length)out.push('This option has a different trade-off. Review the numerical results; it is not automatically an improvement.');if(!mb.feasible)out.push('This option still fails at least one requirement.');return out;}
+function renderAlternative(){const b=state.alternative,a=state.current;if(!b||!a){clearAlternative();return;}const d=comparisonDelta(a,b);$('alternativeCard').className='plan-card alternative-card';$('alternativeCard').innerHTML=card(b,'alternative')+`<div class="change-tags"><span>${d.same?'Same location':nf(d.km,2)+' km away'}</span><span>${d.days===0?'Same landing time':(d.days>0?'+':'')+nf(d.days,0)+' days'}</span></div>`;$('alternativeLegend').hidden=false;$('focusAlternative').disabled=false;$('comparisonSummary').hidden=false;$('comparisonSummary').className='comparison-summary';
+ const rows=[['Lowest battery',nf(a.metrics.minSocPct)+'%',nf(b.metrics.minSocPct)+'%'],['Task energy ready',hours(a.metrics.taskReadyHour),hours(b.metrics.taskReadyHour)],['Solar generation',nf(a.metrics.energyKWh)+' kWh',nf(b.metrics.energyKWh)+' kWh'],['Longest no sun',nf(a.metrics.longestNoSunHours)+' h',nf(b.metrics.longestNoSunHours)+' h'],['Station access',nf(a.metrics.linkHours)+' h',nf(b.metrics.linkHours)+' h'],['Data by deadline',nf(a.metrics.dataAtDeadlineGB,2)+' GB',nf(b.metrics.dataAtDeadlineGB,2)+' GB']];
+ $('comparisonSummary').innerHTML=`<table class="comparison-table"><thead><tr><th>Selected results</th><th class="role-a">A</th><th class="role-b">B</th></tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="why-better"><strong>What changes—and why it matters</strong>${explainDelta(a,b).map(x=>`<p>${esc(x)}</p>`).join('')}</div>`;$('choiceActions').hidden=false;$('adoptAlternative').textContent=state.adopted?'Alternative selected ✓':'Use this alternative →';$('adoptAlternative').disabled=state.adopted;$('restoreCurrent').textContent=state.adopted?'Restore original plan':'Keep current plan';renderOptions();experience?.render();}
+function updateScope(){if(!state.bundle)return;const n=state.bundle.sites.length,mode=state.searchMode;$('delayControls').hidden=mode==='sites';let text='';try{const settings=state.current&&!state.dirty?state.current.settings:readSettings(),plan=buildSearchPlan(state.bundle,settings,searchOptions());text=`${plan.length} combinations · ${mode==='dates'?'same location':n+' loaded sites'} · ${mode==='sites'?'same date':'up to '+$('maxDelay').value+' days later'} · unchanged hardware`;}catch(e){text=e.message;}$('searchScope').textContent=text;}
+function searchOptions(){return{mode:state.searchMode,maxDelayDays:Number($('maxDelay').value),stepDays:Number($('dateStep').value),priority:$('priority').value};}
+async function search(){if(state.searching||state.busy)return;if(state.clockMode!=='mission')setClock('mission');if(state.dirty||!state.current||state.adopted){if(!await calculateCurrent())return;}const opts=searchOptions(),baseline=state.current;const warnings=invariantWarnings(baseline.settings);if(warnings.length){$('searchFeedback').className='search-feedback bad';$('searchFeedback').textContent=warnings.map(w=>w.text).join(' ');return;}const epoch=++state.searchEpoch;expandSearch(true);setSearchBusy(true);$('searchFeedback').textContent='Checking the allowed locations and dates…';$('searchFeedback').className='search-feedback';$('searchProgress').value=0;try{const d=await callWorker('search',{settings:baseline.settings,options:opts});if(epoch!==state.searchEpoch)return;state.choices=d.choices;state.recommendation=recommendChoice(d.choices,{metrics:baseline.metrics,settings:baseline.settings,isBaseline:true,delay:0,distanceKm:0,name:baseline.site.name},opts.priority);const sorted=rankChoices(d.choices,opts.priority),passing=d.choices.filter(x=>x.metrics?.feasible).length,best=state.recommendation||sorted.find(x=>!x.isBaseline&&x.metrics);if(best){await selectChoice(best,false);if(epoch!==state.searchEpoch)return;}
+ expandSearch(false);const errors=d.choices.filter(x=>x.error).length;let text=state.recommendation?`${passing} of ${d.choices.length} combinations pass. B is the preferred tested improvement under your chosen priority.`:passing?`The current plan already performs as well under this priority. B is shown for comparison, not as a better recommendation.`:'No tested option passes all four checks. B is a comparison only—not a successful solution.';if(errors)text+=` ${errors} combinations are outside data coverage or invalid.`;$('searchFeedback').textContent=text;$('searchFeedback').className='search-feedback '+(state.recommendation?'good':!passing?'bad':'');renderOptions();updateTime(state.hour);toast(state.recommendation?'Alternative found. Compare the blue and gold plans.':'Search complete. Read the result before choosing.');}
+ catch(e){if(epoch===state.searchEpoch){$('searchFeedback').textContent=e.message;$('searchFeedback').className='search-feedback bad';toast(e.message,true);}}finally{if(epoch===state.searchEpoch)setSearchBusy(false);}}
+async function cancelSearch(show=true){if(!state.searching)return;state.searchEpoch++;setSearchBusy(false);await initWorker();if(show){$('searchFeedback').textContent='Search cancelled. The original plan is unchanged.';toast('Search cancelled.');}}
+async function selectChoice(choice,announce=true){if(!choice?.metrics)return;const rev=state.revision,epoch=state.searchEpoch;setBusy(true);try{const {result}=await callWorker('calculate',{settings:choice.settings});if(rev!==state.revision||epoch!==state.searchEpoch)return;state.alternative=result;state.adopted=false;state.role='current';renderAlternative();updateScene();state.scene?.setCameraPreset('wide');updateTime(state.hour);if(announce)toast('Comparison option updated. Your current plan is unchanged.');}catch(e){toast(e.message,true);}finally{setBusy(false);}}
+function renderOptions(){const valid=rankChoices(state.choices,$('priority').value).filter(x=>!x.isBaseline);$('otherOptions').hidden=!valid.length;$('optionsList').innerHTML=valid.slice(0,24).map((c,i)=>`<button type="button" class="option-item" data-option="${i}" ${!c.metrics?'disabled':''}><span><strong>${esc(name(c))}</strong>${dateShort(c.settings.startUTC)} · +${c.delay} d</span><b class="${c.metrics?.feasible?'':'fail'}">${c.metrics?c.metrics.feasible?'4 / 4 pass':missionChecks(c.metrics,c.settings).filter(x=>x.pass).length+' / 4 pass':'Not supported'}</b></button>`).join('');$('optionsList').querySelectorAll('[data-option]').forEach(b=>b.addEventListener('click',()=>{if(!state.searching&&!state.busy)selectChoice(valid[+b.dataset.option]);}));$('otherOptions').hidden=true;experience?.render();}
+function updateScene(){if(!state.scene||!state.current)return;const records=[{role:'current',result:state.current},...(state.alternative?[{role:'alternative',result:state.alternative}]:[])];state.scene.setScenarios(records,state.role);state.mapScene?.setScenarios(records,state.role);state.mapScene?.setMode('map');state.polar?.setRecords(records,state.role);state.windowCache.clear();state.pathCache.clear();$('viewTimeRule').textContent=state.alternative?(state.current.settings.startUTC!==state.alternative.settings.startUTC?'Same mission hour · different UTC dates':'Same landing time'):'One selected mission';}
+function focus(role){if(role==='alternative'&&!state.alternative)return;state.role=role;state.scene?.focus(role);state.mapScene?.focus(role);updateTime(state.hour);}
+function inspected(){return state.role==='alternative'&&state.alternative?state.alternative:state.current;}
+function updateTime(h){
+ if(!state.current||state.dirty)return;
+ const r=inspected(),range=clockRange(r);state.hour=clamp(h,0,range.durationHours);if(state.clockMode==='mission')state.lastMissionHour=state.hour;
+ const samples={};for(const [role,result]of [['current',state.current],['alternative',state.alternative]]){if(!result)continue;const rr=clockRange(result),ms=state.clockMode==='now'?(state.livePausedMs??Date.now()):Math.min(rr.end,rr.start+state.hour*HOUR_MS);samples[role]=skyAt(state.bundle,result,ms,{telemetry:state.clockMode==='mission'});}
+ state.skySamples=samples;const p=samples[state.role];$('timeSlider').value=range.durationHours?state.hour/range.durationHours*1000:0;$('timeSlider').disabled=state.clockMode==='now';
+ $('elapsedTime').textContent=state.clockMode==='mission'?`Mission hour ${nf(state.hour,2)}`:state.clockMode==='now'?'Current UTC · calculated sky':`Sky day ${nf(state.hour/24,2)}`;
+ const clock=new Date(p.utc).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'UTC',hour12:false});$('missionClock').textContent=`${state.role==='current'?'A':'B'} · ${clock} UTC`;
+ $('focusCurrent').classList.toggle('active',state.role==='current');$('focusAlternative').classList.toggle('active',state.role==='alternative');
+ state.scene?.setSamples(samples,state.role,state.phase);state.mapScene?.setSamples(samples,state.role,state.phase);state.polar?.setFrame(samples,state.role,state.phase);syncClockUI();refreshPaths();renderInstant(r,p);experience?.updateMoment(r,p);drawAll();
+}
+function nextText(w,p,d){const v=eventCountdown(w,p.elapsedHours,d);return v.hours===null?`No ${v.next==='sets'?'set':'rise'} in interval`:`${v.next==='sets'?'Sets':'Rises'} in ${nf(v.hours)} h`;}
+function renderInstant(r,p){
+ const w=visibilityData(),duration=w.durationHours,localP={...p,elapsedHours:state.hour};let status='';
+ if(!p.telemetryAvailable)status=p.linkAvailable?'Station geometry open':'Station geometry closed';else if(dataFlowVisible(p))status='Transmitting';else if(p.deliveredGB>=r.settings.dataTargetGB-1e-8)status='Data target complete';else if(p.stationClearanceDeg<=0)status='Terrain blocks station';else if(p.groundElevationDeg<=r.settings.earthMaskDeg)status='Station out of view';else status='Protecting battery reserve';
+ const sunTitle=p.eclipsed?'Eclipse':p.sunFraction<1e-6?'Blocked':p.sunFraction>.999?'Visible':'Partly visible';
+ $('sunStatusTitle').textContent=`${sunTitle} · ${nf(p.sunElDeg,1)}°`;$('sunStatusDetail').textContent=`${nf(p.powerW,0)} W · ${nextText(w.sun,localP,duration)}`;
+ $('earthStatusTitle').textContent=`${p.earthVisible?'Visible':'Blocked'} · ${nf(p.earthElDeg,1)}°`;$('earthStatusDetail').textContent=`${nextText(w.earth,localP,duration)} · station ${nf(p.groundElevationDeg,1)}°`;
+ $('linkStatusTitle').textContent=status;$('linkStatusDetail').textContent=p.telemetryAvailable?`${nf(p.actualTxMbps,3)} Mbps · battery ${nf(p.socPct)}%`:'Geometry and energy evaluated separately';
+
+}
+function setView(view){
+ if(!['mission','polar','sky'].includes(view))return;state.view=view;const polar=view==='polar'||view==='sky',mission=view==='mission';
+ $('cameraBar').hidden=!mission;$('skyCameraBar').hidden=!polar;$('polarCameraButtons').hidden=view!=='polar';$('landerCameraButtons').hidden=view!=='sky';$('skyDragHint').textContent=view==='polar'?'Drag to rotate · scroll to zoom':'Drag to look around · scroll to change field of view';
+ $('skyStatusRail').hidden=!mission;document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);b.setAttribute('aria-pressed',String(b.dataset.view===view));});
+ $('surfacePane').hidden=!mission;$('mapPane').hidden=!mission;$('horizonPane').hidden=!mission;$('polarCanvas').hidden=!polar;
+ if(polar){state.polar?.setMode(view);state.polar?.setActive(state.page==='planner');}else{state.polar?.setActive(false);state.scene?.setMode('3d');state.mapScene?.setMode('map');}
+ state.scene?.resize();state.mapScene?.resize();state.polar?.resize();updateTime(state.hour);drawAll();
+}
+function stop(){if(state.clockMode==='now'&&state.playing)state.livePausedMs=Date.now();state.playing=false;state.playStopHour=null;if(animationFrame)cancelAnimationFrame(animationFrame);animationFrame=null;$('playTime').textContent='▶';$('playTime').setAttribute('aria-label','Play sky and mission timeline');}
+function play(){
+ if(state.playing){stop();return;}if(!state.current||state.dirty)return;const range=clockRange(inspected());if(state.hour>=range.durationHours)state.hour=0;
+ state.livePausedMs=null;state.playing=true;$('playTime').textContent='Ⅱ';$('playTime').setAttribute('aria-label','Pause sky and mission timeline');lastFrame=performance.now();let lastPaint=0;
+ const tick=t=>{if(!state.playing)return;const dt=Math.min(.25,Math.max(0,(t-lastFrame)/1000));lastFrame=t;state.phase+=dt;let ended=false;
+  if(state.clockMode==='now'){const now=Date.now(),b=ephemerisBounds(state.bundle);if(now>b.end||now<b.start){stop();toast('Current UTC is outside the supplied ephemeris.',true);return;}state.hour=(now-state.liveAnchor)/HOUR_MS;}
+  else{const next=advanceClock(state.hour,dt,Number($('playSpeed').value),clockRange(inspected()).durationHours,{loop:$('loopTime').checked,stopAt:state.playStopHour});state.hour=next.hour;ended=next.ended;}
+  if(t-lastPaint>55){updateTime(state.hour);lastPaint=t;}if(ended){updateTime(state.hour);stop();return;}animationFrame=requestAnimationFrame(tick);
+ };animationFrame=requestAnimationFrame(tick);
+}
+function jump(kind){if(state.clockMode!=='mission')setClock('mission');const r=inspected();if(!r||state.dirty)return;stop();let p;if(kind==='shadow')p=r.samples.find(p=>p.sunFraction<1e-6);else if(kind==='radio')p=r.samples.find(dataFlowVisible);else p=r.samples.reduce((best,p)=>p.socPct<best.socPct?p:best,r.samples[0]);if(!p){toast(kind==='radio'?'No powered transmission occurs in this scenario.':'No complete shadow occurs in this mission interval.');return;}updateTime(p.elapsedHours);toast(kind==='radio'?'Showing a modeled transmission interval. Press Play to animate.':kind==='shadow'?'Showing the first sampled complete shadow.':'Showing the lowest sampled battery charge.');}
+function resizeCanvas(canvas){const rect=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);if(rect.width<2||rect.height<2)return null;if(canvas.width!==Math.round(rect.width*d)||canvas.height!==Math.round(rect.height*d)){canvas.width=Math.round(rect.width*d);canvas.height=Math.round(rect.height*d);}const c=canvas.getContext('2d');c.setTransform(d,0,0,d,0,0);return{c,w:rect.width,h:rect.height};}
+function drawAll(){if(!state.current||state.dirty)return;drawTimeline();drawVisibility();if(state.view==='mission')drawHorizon();}
+function drawTimeline(){drawMissionChart($('timelineCanvas'),$('chartDescription'),state);}
+function drawHorizon(){const cv=resizeCanvas($('horizonCanvas'));if(!cv)return;const{c,w,h}=cv,r=inspected(),p=state.skySamples[state.role]||sampleAtHour(r,state.hour),left=40,right=w-22,top=48,bottom=h-48,hh=r.horizon,ah=r.antennaHorizon;
+ let lo=Math.min(-1,...hh.elevationDeg,...ah.elevationDeg,p.sunElDeg,p.earthElDeg,p.stationElDeg)-.8,hi=Math.max(2,...hh.elevationDeg,...ah.elevationDeg,p.sunElDeg,p.earthElDeg,p.stationElDeg)+1;const x=a=>left+a/360*(right-left),y=e=>bottom-(e-lo)/(hi-lo)*(bottom-top);
+ c.fillStyle='#101b2a';c.fillRect(0,0,w,h);c.font='10px system-ui';c.fillStyle=state.role==='current'?A_COLOR:B_COLOR;c.fillText(`${state.role==='current'?'A · CURRENT':'B · ALTERNATIVE'} — ${name(r.site)}`,left,24);c.strokeStyle='#324255';for(let i=0;i<=4;i++){const e=lo+(hi-lo)*i/4;c.beginPath();c.moveTo(left,y(e));c.lineTo(right,y(e));c.stroke();c.fillStyle='#899eb6';c.textAlign='right';c.fillText(nf(e,1)+'°',left-6,y(e)+3);}
+ c.beginPath();c.moveTo(left,bottom);hh.azimuthDeg.forEach((a,i)=>c.lineTo(x(a),y(hh.elevationDeg[i])));c.lineTo(right,y(hh.elevationDeg[0]));c.lineTo(right,bottom);c.closePath();c.fillStyle='#45566a85';c.fill();c.beginPath();hh.azimuthDeg.forEach((a,i)=>i?c.lineTo(x(a),y(hh.elevationDeg[i])):c.moveTo(x(a),y(hh.elevationDeg[i])));c.strokeStyle='#b1bdcb';c.lineWidth=1.6;c.stroke();c.beginPath();c.setLineDash([4,4]);ah.azimuthDeg.forEach((a,i)=>i?c.lineTo(x(a),y(ah.elevationDeg[i])):c.moveTo(x(a),y(ah.elevationDeg[i])));c.strokeStyle='#76a7cf';c.lineWidth=1;c.stroke();c.setLineDash([]);const placedSkyLabels=[];const marker=(az,el,text,color,offset)=>{const xx=x(az),yy=y(el);if(text.startsWith('Sun')||text.startsWith('Earth')){drawCelestial(c,text.startsWith('Sun')?'sun':'earth',xx,yy,text.startsWith('Sun')?19:24,{glow:true});c.strokeStyle=color;c.lineWidth=.8;c.beginPath();c.moveTo(xx-3,yy);c.lineTo(xx+3,yy);c.moveTo(xx,yy-3);c.lineTo(xx,yy+3);c.stroke();}else{c.fillStyle=color;c.beginPath();c.moveTo(xx,yy-4);c.lineTo(xx+4,yy);c.lineTo(xx,yy+4);c.lineTo(xx-4,yy);c.closePath();c.fill();}c.fillStyle=color;c.font='500 11px system-ui';c.textAlign=xx>right-100?'right':'left';let labelY=clamp(yy+offset,37,bottom-3);for(const prev of placedSkyLabels){if(Math.abs(prev.x-xx)<150&&Math.abs(prev.y-labelY)<16)labelY=prev.y+18>bottom-3?prev.y-18:prev.y+18;}placedSkyLabels.push({x:xx,y:labelY});c.fillText(text,xx+(xx>right-100?-28:28),labelY);};marker(p.sunAzDeg,p.sunElDeg,`Sun ${nf(p.sunElDeg)}°`,'#efc775',-8);marker(p.earthAzDeg,p.earthElDeg,`Earth ${nf(p.earthElDeg)}°`,'#9ccbf0',-9);marker(p.stationAzDeg,p.stationElDeg,`Station ${nf(p.stationElDeg)}°`,'#9adecc',16);c.textAlign='center';['N','NE','E','SE','S','SW','W','NW','N'].forEach((n,i)=>{c.fillStyle='#a4b6cc';c.fillText(n,x(i*45),bottom+20);});c.textAlign='left';c.fillStyle='#879bb3';c.font='9px system-ui';c.fillText('Azimuth clockwise from north · grey = collector horizon · dashed = antenna horizon',left,h-14);
+}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function drawer(title,html){state.lastOpenedFocus=document.activeElement;$('drawerTitle').textContent=title;$('drawerContent').innerHTML=html;$('helpDrawer').hidden=false;$('drawerBackdrop').hidden=false;$('drawerClose').focus();}
+function closeDrawer(){$('helpDrawer').hidden=true;$('dataDrawer').hidden=true;$('drawerBackdrop').hidden=true;state.lastOpenedFocus?.focus?.();}
+function openDataDrawer(){state.lastOpenedFocus=document.activeElement;$('dataDrawer').hidden=false;$('drawerBackdrop').hidden=false;$('dataDrawerClose').focus();}
+async function detectServer(){
+ state.serverOnline=false;
+ $('onlineCheck').disabled=true;
+ if(location.protocol==='file:'||!['http:','https:'].includes(location.protocol)){
+  $('dataWorkspaceMode').textContent='Local HTML file';
+  $('dataWorkspaceDetail').textContent='Calculations use the included data. An online cross-check needs the Python launcher.';
+  $('onlineCheckResult').textContent='The HTML file has no local API server. Extract the full package, then use Start_Windows.bat, Start_Mac.command or python3 run.py. Internet access is required only for the optional Horizons check.';
+  return;
+ }
+ try{
+  const r=await fetch('/api/health',{cache:'no-store',signal:AbortSignal.timeout(5000)});
+  if(!r.ok)throw new Error('No compatible local API');const j=await r.json();
+  if(j.ok!==true||j.online_horizons!==true)throw new Error('No compatible Horizons adapter');
+  state.serverOnline=true;
+  $('dataWorkspaceMode').textContent='Local API ready';
+  $('dataWorkspaceDetail').textContent='Included data are in use. JPL connectivity has not yet been tested.';
+  $('onlineCheck').disabled=false;
+  $('onlineCheckResult').textContent='Run the check to request Sun and Earth directions from JPL Horizons. A working local launcher does not guarantee internet access or an available JPL response.';
+ }catch{
+  $('dataWorkspaceMode').textContent='Included data only';
+  $('dataWorkspaceDetail').textContent='No compatible local API was detected. Mission calculations remain available.';
+  $('onlineCheckResult').textContent='Use the included Python launcher for the optional Horizons cross-check. Simply serving the HTML with a generic web server does not enable this API.';
+ }
+}
+async function runOnlineCheck(){
+ const out=$('onlineCheckResult');if(!state.serverOnline){out.className='online-result error';out.textContent='Online cross-check is unavailable in standalone-file mode. Use the included local launcher.';return;}if(!state.current||state.dirty){out.className='online-result error';out.textContent='Evaluate the current plan first.';return;}
+ const checked=inspected(),site=checked.site,start=checked.settings.startUTC;out.className='online-result';out.textContent='Contacting JPL Horizons…';$('onlineCheck').disabled=true;
+ try{const r=await fetch('/api/horizons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site:{id:site.id,name:site.name,latitude_deg:site.latitude_deg,longitude_deg:site.longitude_deg,ground_elevation_m:site.ground_elevation_m},start_utc:start,hours:2,step_min:60,collector_height_m:checked.settings.heightM,antenna_height_m:checked.settings.antennaHeightM})});const j=await r.json();if(!r.ok)throw new Error(j.error||'The online request failed.');const q=j.rows?.[0];if(!q)throw new Error('Horizons returned no usable sample.');const off=skyAt(state.bundle,checked,Date.parse(start),{telemetry:false});const sunAz=angularDifference(q.sun_azimuth_deg,off.sunAzDeg),sunEl=Math.abs(q.sun_elevation_deg-off.sunElDeg),earthAz=angularDifference(q.earth_azimuth_deg,off.earthAzDeg),earthEl=Math.abs(q.earth_elevation_deg-off.earthElDeg);const maxDiff=Math.max(sunAz,sunEl,earthAz,earthEl);out.className='online-result '+(maxDiff>.1?'warning':'success');$('dataWorkspaceDetail').textContent='The latest JPL request succeeded. Mission calculations still use the included data.';out.innerHTML=`<strong>Horizons reference returned · ${esc(shortSiteName(site.name))}</strong><br>${date(start)} UTC · collector ${nf(checked.settings.heightM,1)} m / antenna ${nf(checked.settings.antennaHeightM,1)} m<br>Sun difference: ${nf(sunAz,3)}° azimuth, ${nf(sunEl,3)}° elevation.<br>Earth difference: ${nf(earthAz,3)}° azimuth, ${nf(earthEl,3)}° elevation.<br><small>${maxDiff>.1?'Differences exceed 0.1°; examine frame, timing and apparent-position conventions. ':''}This compares directions, not terrain accuracy or model validity. The prepared calculation data are unchanged.</small>`;}catch(e){out.className='online-result error';$('dataWorkspaceDetail').textContent='The latest online check failed. Included mission data and calculations are unchanged.';out.textContent='The online check could not be completed. Calculations still use the included data. '+e.message;}finally{$('onlineCheck').disabled=!state.serverOnline;}
+}
+function shortSiteName(x){return String(x||'').replace('Connecting Ridge · ','');}
+function download(name,text,type='application/json'){const b=new Blob([text],{type}),a=document.createElement('a'),u=URL.createObjectURL(b);a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);}
+function save(){if(!state.current||state.dirty){toast('Check the plan before saving.',true);return;}download('LunaShift_scenarios.json',JSON.stringify({format:'LunaShift-Presentation',current:state.current.settings,alternative:state.alternative?.settings||null,adopted:state.adopted,priority:$('priority').value,importedSites:state.bundle.sites.filter(s=>s.metadata?.imported)},null,2));}
+async function openFile(file){if(!file)return;try{const obj=JSON.parse(await file.text());if(!state.bundle)await route('planner');if(state.busy||state.searching)throw new Error('Finish or cancel the calculation first.');const a=obj.current||obj.settings||obj;if(!a.siteId||!a.startUTC)throw new Error('This file does not contain lunar mission settings.');if(obj.importedSites){for(const s of obj.importedSites)await addImportedSite(s);}if(!state.bundle.sites.some(s=>s.id===a.siteId))throw new Error('This scenario needs a site dataset that is not loaded.');state.revision++;writeSettings(a);state.dirty=true;const ok=await calculateCurrent();if(!ok)return;if(obj.alternative){const res=await callWorker('calculate',{settings:obj.alternative});state.alternative=res.result;renderAlternative();updateScene();updateTime(0);}if(obj.adopted&&state.alternative)adopt();toast('Scenario settings loaded and recalculated.');}catch(e){toast(e.message,true);}}
+function adopt(){if(!state.alternative||state.dirty||state.busy||state.searching)return;state.adopted=true;writeSettings(state.alternative.settings);state.role='alternative';renderAlternative();focus('alternative');notice('Alternative B is selected. A remains visible for comparison. Check current plan to start a new comparison from B.');}
+function restore(){if(!state.current)return;state.adopted=false;writeSettings(state.current.settings);state.role='current';renderAlternative();focus('current');notice('Original plan A restored. The alternative remains available to compare.');}
+function exportCSV(){if(!state.current||state.dirty){toast('Calculate the current settings first.',true);return;}const fields=['utc','elapsedHours','sunAzDeg','sunElDeg','sunFraction','earthAzDeg','earthElDeg','earthVisible','stationAzDeg','stationElDeg','groundElevationDeg','linkAvailable','powerW','loadW','storedKWh','socPct','actualTxMbps','deliveredGB','cumulativeEnergyKWh','stationClearanceDeg','cn0DbHz','maxRateMarginDb','rateBps'];const rows=['scenario,site,startUTC,'+fields.join(',')];for(const [role,r]of [['A',state.current],['B',state.alternative]]){if(!r)continue;for(const p of r.samples)rows.push([role,r.site.id,r.settings.startUTC,...fields.map(k=>p[k]??'')].join(','));}download('LunaShift_comparison.csv',rows.join('\n'),'text/csv');}
+async function demo(){await route('planner');if(state.searching)await cancelSearch(false);if(state.busy)return;state.revision++;writeSettings();state.dirty=true;await calculateCurrent();state.searchMode='both';$('maxDelay').value=14;$('dateStep').value=1;$('priority').value='reserve';syncSearchButtons();await search();}
+function syncSearchButtons(){document.querySelectorAll('[data-search]').forEach(b=>{b.classList.toggle('active',b.dataset.search===state.searchMode);b.setAttribute('aria-pressed',String(b.dataset.search===state.searchMode));});updateScope();}
+async function addImportedSite(site){if(!site?.id||!site?.name||!Number.isFinite(site.latitude_deg)||!Number.isFinite(site.longitude_deg))throw new Error('Import needs id, name, latitude_deg and longitude_deg.');if(!site.terrain&&!site.horizon)throw new Error('Supply numerical terrain or a supported skyline, not an image.');const copy={...site,metadata:{...site.metadata,imported:true}};const idx=state.bundle.sites.findIndex(s=>s.id===copy.id);if(idx>=0){if(!state.bundle.sites[idx].metadata?.imported)throw new Error('Use a different id; bundled sites cannot be overwritten.');state.bundle.sites[idx]=copy;}else state.bundle.sites.push(copy);await callWorker('addSite',{site:copy});$('siteId').innerHTML=state.bundle.sites.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');state.scene.bundle=state.bundle;state.scene.geometryKey='';if(state.mapScene){state.mapScene.bundle=state.bundle;state.mapScene.geometryKey='';}return copy;}
+
+function clockRange(r){
+ if(state.clockMode==='now')return skyRange(state.bundle,r,'now',state.liveAnchor||Date.now());
+ if(state.clockMode==='sky'&&state.skyAnchor!==null)return skyRange(state.bundle,r,'now',state.skyAnchor);
+ return skyRange(state.bundle,r,state.clockMode);
+}
+function syncClockUI(){
+ const mode=state.clockMode;document.querySelectorAll('[data-clock]').forEach(b=>{b.classList.toggle('active',b.dataset.clock===mode);b.setAttribute('aria-pressed',String(b.dataset.clock===mode));});
+ $('skyOnlyNotice').hidden=mode==='mission';$('playSpeed').disabled=mode==='now';$('loopTime').disabled=mode==='now';
+ $('clockModeHint').textContent=mode==='mission'?(state.alternative?'A / B align by mission hour':'Calculated mission playback'):mode==='now'?'Computer clock · 1× · computed, not live imagery':state.skyAnchor!==null?'30 days from selected UTC · sky only':'30 days from each landing · sky only';
+ if(clockRange(inspected()).clipped)$('clockModeHint').textContent+=' · ends at data boundary';
+ $('timelineNote').textContent=mode==='mission'?'Charts use hours after landing. Blue is the current plan; gold is the alternative.':'These plots remain the original mission results. Sky exploration does not recalculate battery or data.';
+ $('viewTimeRule').textContent=mode==='now'?'A / B at the same UTC':mode==='sky'?'Sky exploration · mission results unchanged':state.alternative?'Same mission hour · separate landing dates':'One selected mission';
+}
+function setClock(mode){
+ if(!state.current||state.dirty)return;const previous=state.clockMode;stop();if(previous==='mission')state.lastMissionHour=state.hour;
+ try{
+  if(mode==='now'){const bounds=ephemerisBounds(state.bundle),now=Date.now();if(now<bounds.start||now>bounds.end)throw new Error('The computer date is outside the packaged 2026–2027 ephemeris. Use a supported mission date.');state.liveAnchor=now;state.livePausedMs=null;state.savedPlaySpeed=$('playSpeed').value;$('playSpeed').value='1';}
+  else if(previous==='now')$('playSpeed').value=state.savedPlaySpeed||'3600';
+  state.clockMode=mode;state.skyAnchor=null;state.windowCache.clear();state.pathCache.clear();updateTime(mode==='mission'?state.lastMissionHour:0);if(mode==='now')play();
+ }catch(e){state.clockMode=previous;syncClockUI();toast(e.message,true);}
+}
+function visibilityData(){
+ const r=inspected(),range=clockRange(r),key=[r.site.id,r.settings.startUTC,r.settings.heightM,r.settings.antennaHeightM,r.settings.stationId,r.settings.earthMaskDeg,r.settings.lunarClearanceDeg,state.clockMode,range.start,range.end].join('|');
+ if(!state.windowCache.has(key))state.windowCache.set(key,state.clockMode==='mission'?missionVisibility(r):scanSkyWindows(state.bundle,r,range.start,range.end,15));
+ return state.windowCache.get(key);
+}
+function refreshPaths(){
+ const r=inspected(),range=clockRange(r),key=[r.site.id,state.clockMode,range.start,range.end,r.settings.heightM,r.settings.antennaHeightM].join('|');
+ if(!state.pathCache.has(key))state.pathCache.set(key,makeSkyPaths(state.bundle,r,range.start,range.end,121));
+ state.polar?.setPaths(state.pathCache.get(key),key);
+}
+function drawVisibility(){
+ const cv=resizeCanvas($('visibilityCanvas'));if(!cv)return;const{c,w,h}=cv,windows=visibilityData(),duration=windows.durationHours,left=w<450?87:100,right=w-10,top=7,rh=20,x=t=>left+t/Math.max(duration,1e-9)*(right-left);
+ c.clearRect(0,0,w,h);c.font='10px system-ui';const rows=[['Sunlight','sun','#d5ac58'],['Earth centre','earth','#78a8ce'],['Both visible','both','#429d80'],['Ground access','link','#8992b0']];
+ for(let i=0;i<rows.length;i++){const[label,key,color]=rows[i],y=top+i*rh;c.textAlign='left';c.fillStyle=key==='both'?'#2c6757':'#687d90';c.font=`${key==='both'?'600':'400'} 10px system-ui`;c.fillText(label,0,y+11);c.fillStyle='#e9eef3';c.beginPath();c.roundRect(left,y+1,right-left,12,3);c.fill();c.fillStyle=color;for(const[a,b]of windows[key])c.fillRect(x(a),y+1,Math.max(.6,x(b)-x(a)),12);}
+ c.strokeStyle='#203a51';c.lineWidth=1;c.beginPath();c.moveTo(x(state.hour),top-2);c.lineTo(x(state.hour),top+rh*4-5);c.stroke();c.textAlign='center';c.font='9px system-ui';c.fillStyle='#8293a4';for(let i=0;i<=4;i++){const t=duration*i/4;c.fillText(state.clockMode==='mission'?`${nf(t,0)} h`:`${nf(t/24,1)} d`,x(t),h-10);}
+ const next=findWindow(windows.both,state.hour),p=state.skySamples[state.role],inNow=!!p?.bothVisible;
+ $('jointWindowLabel').textContent=inNow?(next?`Sun + Earth visible · ${nf(next.remaining,1)} h left in this window`:'Sun + Earth visible at this instant'):next?`Next shared window in ${nf(Math.max(0,next.start-state.hour),1)} h`:'No shared visibility in this interval';
+ $('overlapTotal').textContent=`${nf(unionDuration(windows.both),1)} h together · ${windows.both.length} window${windows.both.length===1?'':'s'}`;
+ $('nextTogether').disabled=!windows.both.length;$('playTogether').disabled=!next;$('nextTogether').textContent=inNow&&findWindow(windows.both,state.hour,{next:true})?'Next shared window →':inNow?'Go to window start':next?'Next Sun + Earth window →':windows.both.length?'Replay first window ↺':'No shared window';
+}
+function leaveLiveForPlayback(){if(state.clockMode==='now'){const anchor=state.liveAnchor;stop();state.clockMode='sky';state.skyAnchor=anchor;$('playSpeed').value=state.savedPlaySpeed||'3600';state.windowCache.clear();state.pathCache.clear();}}
+function jumpTogether(playWindow=false){
+ if(!state.current||state.dirty)return;const oldHour=state.hour;leaveLiveForPlayback();stop();const windows=visibilityData();let win=findWindow(windows.both,oldHour,{next:!playWindow&&!!state.skySamples[state.role]?.bothVisible});if(!win)win=findWindow(windows.both,oldHour)||findWindow(windows.both,0);
+ if(!win){toast('No simultaneous Sun and Earth-centre visibility in this interval.');return;}
+ let h=playWindow&&oldHour>=win.start&&oldHour<win.end?oldHour:Math.min(win.end,win.start+1/3600);
+ // Refine the seek inside the sampled overlap rather than claim event accuracy.
+ const r=inspected(),range=clockRange(r);for(let i=0;i<10&&h<win.end;i++){if(skyAt(state.bundle,r,range.start+h*HOUR_MS,{telemetry:false}).bothVisible)break;h=Math.min(win.end,h+Math.max(.002,(win.end-win.start)/100));}
+ updateTime(h);if(playWindow){state.playStopHour=win.end;play();}else toast('Showing the selected Sun + Earth window. This is visibility, not guaranteed radio transmission.');
 }
 
-// Event delegation also covers results rendered after a calculation.
-document.addEventListener('click',async event=>{
-  const button=event.target.closest('button,a');if(!button)return;
-  if(button.dataset.page){setPage(button.dataset.page);return;}
-  if(button.dataset.go){setPage(button.dataset.go);return;}
-  if(button.dataset.help){openHelp(button.dataset.help);return;}
-  if(button.dataset.inspect){choose(button.dataset.inspect,true);return;}
-  if(button.dataset.action==='analyze'){await runAnalysis({scroll:true});return;}
-  if(button.dataset.option!=null){await applyOption(S.displayedOptions[+button.dataset.option]);return;}
-  if(button.dataset.allOption!=null){await applyOption(S.repair.alternatives[+button.dataset.allOption]);return;}
-  if(button.dataset.envelopeSite){await applyOption({site_id:button.dataset.envelopeSite,start_utc:new Date(new Date(S.repairBase.start_utc).getTime()+(+button.dataset.delay)*3600000).toISOString(),height_m:S.repairBase.height_m});return;}
-  if(button.hasAttribute('data-dialog-close'))$('helpDialog').close();
-  if(button.hasAttribute('data-tour-back')){S.tourIndex--;showTour();}
-  if(button.hasAttribute('data-tour-next')){S.tourIndex++;showTour();}
-  if(button.hasAttribute('data-tour-done')){$('helpDialog').close();setPage('plan');}
-  if(button.hasAttribute('data-download-report')){download('LunaShift_mission_report.html',reportHTML(),'text/html');$('helpDialog').close();note('Report downloaded. Open the HTML file in a browser; use Print to save a PDF.','success');}
-});
-$('planForm').addEventListener('submit',event=>{event.preventDefault();runAnalysis({scroll:true});});
-$('siteSelect').addEventListener('change',event=>choose(event.target.value));
-for(const id of SETTINGS)$(id).addEventListener('input',markDirty);
-function syncSearchInputs(){ $('maxDelay').disabled=!$('allowDelay').checked; $('delayStep').disabled=!$('allowDelay').checked; $('maxHeight').disabled=!$('allowHeight').checked; $('heightStep').disabled=!$('allowHeight').checked; }
-for(const id of SEARCH_SETTINGS)$(id).addEventListener('change',()=>{clearRepair();syncSearchInputs();queueSettings();});
-$('preference').addEventListener('change',()=>{const weights={balanced:[1,1,1],location:[8,1,1],date:[1,8,1],height:[1,1,8]}[$('preference').value];if(weights){['wMove','wDelay','wHeight'].forEach((id,index)=>$(id).value=weights[index]);queueSettings();}});
-for(const id of ['wMove','wDelay','wHeight'])$(id).addEventListener('input',()=>{$('preference').value='custom';clearRepair();queueSettings();});
-$('timeSlider').addEventListener('input',event=>{const value=+event.target.value;stopPlayback();S.sample=value;updateTime();drawAll();});
-$('mapCanvas').addEventListener('click',event=>{const rect=event.target.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;const hit=S.mapHits.find(point=>Math.hypot(x-point.x,y-point.y)<19);if(hit)choose(hit.id);});
-$('mapCanvas').addEventListener('mousemove',event=>{const rect=event.target.getBoundingClientRect();event.target.style.cursor=S.mapHits.some(point=>Math.hypot(event.clientX-rect.left-point.x,event.clientY-rect.top-point.y)<19)?'pointer':'default';});
-$('timelineCanvas').addEventListener('click',event=>{const r=current();if(!r?.tracks)return;const rect=event.target.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,(event.clientX-rect.left-54)/(rect.width-68)));S.sample=Math.round(fraction*(r.tracks.length-1));$('timeSlider').value=S.sample;updateTime();drawAll();});
-$('playButton').addEventListener('click',togglePlayback);
-$('repairButton').addEventListener('click',runRepair);
-$('exportProject').addEventListener('click',exportProject);
-$('exportResults').addEventListener('click',exportResults);
-$('reportButton').addEventListener('click',openReport);
-$('tourButton').addEventListener('click',startTour);$('learnStart').addEventListener('click',startTour);$('closeDialog').addEventListener('click',()=>$('helpDialog').close());
-$('csvKind').addEventListener('change',csvHelp);
-$('importProject').addEventListener('click',async()=>{const file=$('projectFile').files[0];if(!file)return note('Choose a LunaShift project JSON file first.','error');if(file.size>32000000)return note('This project is larger than the 32 MB limit.','error');await dataAction('Checking and opening your project…',async()=>api('/api/import',{kind:'project',project:JSON.parse(await file.text())}),{restore:true});});
-$('importCsv').addEventListener('click',async()=>{const file=$('csvFile').files[0];if(!file)return note('Choose the CSV file you want to add.','error');if(file.size>31000000)return note('This CSV is too large for the learning platform.','error');if(!$('csvSource').value.trim())return note('Write a source or description so your team knows where these values came from.','error');await dataAction('Checking the CSV columns and attaching your layer…',async()=>api('/api/import',{kind:$('csvKind').value,site_id:$('csvSite').value,text:await file.text(),source:$('csvSource').value,metadata:{observer_height_m:+$('csvHeight').value,range_limit_m:+$('csvRange').value,max_gap_min:+$('csvGap').value,synthetic:$('csvSynthetic').checked}}));});
-$('fetchButton').addEventListener('click',()=>prepareGeometryFromData());
-$('addSite').addEventListener('click',()=>dataAction('Adding your location…',()=>api('/api/add_site',{id:$('newId').value,name:$('newName').value,latitude_deg:+$('newLat').value,longitude_deg:+$('newLon').value,ground_elevation_m:+$('newElevation').value,slope_deg:$('newSlope').value===''?null:+$('newSlope').value})));
-async function resetDemo(){if(!confirm('Replace this workspace with the synthetic learning example? Save a copy first to keep your current data.'))return;await dataAction('Restoring the learning example…',()=>api('/api/reset',{}),{restore:true});restoreSettings({selected_site_id:'A',fields:{start:'2026-11-01T00:00',duration:'120',step:'60',height:'2',minSun:'35',maxDark:'30',maxGap:'36',maxSlope:'12',margin:'0.05',slopeCheck:true,allowMove:true,allowDelay:true,allowHeight:true,maxDelay:'72',maxHeight:'10',delayStep:'12',heightStep:'4',wMove:'1',wDelay:'1',wHeight:'1',preference:'balanced'}});setPage('plan');await runAnalysis();}
-$('resetButton').addEventListener('click',resetDemo);$('exampleButton').addEventListener('click',resetDemo);
-let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(drawAll,100);});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();});
-async function init(){
-  csvHelp();syncSearchInputs();
-  try {const data=await api('/api/state');S.token=data.token;S.storage=data.storage;projectUpdated(data.project,true);$('saveState').textContent=data.storage?.persistent?'Autosave on this computer':'Temporary runtime storage';
-    if(data.storage?.warning)note(data.storage.warning,'warn');
-    await runAnalysis();
-    setPage('plan',false);
-  }catch(e){note(e.message,'error');$('dataBadge').textContent='Server not connected';$('dataText').textContent='Start run.py on your Mac, or run the launcher cell in the Colab notebook, then reload this page.';}
-}
-// init() is called by studio.js after extensions are registered.
+// Navigation and core controls.
+document.querySelectorAll('[data-page]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();route(a.dataset.page).catch(()=>{});}));
+document.querySelectorAll('[data-notes]').forEach(b=>b.addEventListener('click',()=>drawer('Calculation notes & credits',NOTES_HTML)));$('dataRibbonOpen').addEventListener('click',openDataDrawer);$('footerDataOpen').addEventListener('click',openDataDrawer);$('drawerClose').addEventListener('click',closeDrawer);$('dataDrawerClose').addEventListener('click',closeDrawer);$('drawerBackdrop').addEventListener('click',closeDrawer);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();const open=!$('helpDrawer').hidden?$('helpDrawer'):!$('dataDrawer').hidden?$('dataDrawer'):null;if(e.key==='Tab'&&open){const els=[...open.querySelectorAll('button,a,input,select')].filter(x=>!x.disabled),first=els[0],last=els.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+
+$('missionForm').addEventListener('submit',e=>{e.preventDefault();calculateCurrent();});$('missionForm').addEventListener('input',e=>{if(['maxDelay','dateStep','priority','timeSlider','playSpeed','showSkyPaths','loopTime'].includes(e.target.id)){if(e.target.id==='maxDelay')updateScope();return;}if(e.target.matches('input,select'))dirty();});$('missionForm').addEventListener('change',e=>{if(['maxDelay','dateStep','priority','timeSlider','playSpeed','showSkyPaths','loopTime'].includes(e.target.id)){if(['maxDelay','dateStep','priority'].includes(e.target.id))updateScope();return;}if(e.target.tagName==='SELECT'){showFixed();updateCoordinates();}});
+$('findOption').addEventListener('click',()=>{if(innerWidth<1050)$('decisionPanel').scrollIntoView({block:'start',behavior:'smooth'});search();});$('runSearch').addEventListener('click',search);$('cancelSearch').addEventListener('click',()=>cancelSearch());document.querySelectorAll('[data-search]').forEach(b=>b.addEventListener('click',()=>{if(state.searching)return;state.searchMode=b.dataset.search;syncSearchButtons();}));$('priority').addEventListener('change',()=>{if(state.choices.length&&!state.searching){state.recommendation=null;$('searchFeedback').textContent='Priority changed. Run the comparison again to update the recommendation.';renderOptions();}});$('searchExpand').addEventListener('click',()=>expandSearch(true));$('searchInfo').addEventListener('click',()=>drawer('How alternatives are compared',`<h3>One explicit change at a time</h3><p>Location keeps the original landing date. Date keeps the original location. Both tests every allowed site–date combination. All other hardware and mission requirements remain fixed.</p><h3>How the ranking works</h3><p>Plans are ordered first by the number of failed mission checks, then by your selected priority. A recommended solution must pass all four checks. Ties prefer less landing delay and relocation. No hidden weighted score is used.</p><p>Higher battery reserve means the highest minimum state of charge during the mission. Earlier joint readiness is measured in hours after each landing, not an absolute calendar date. Station access is geometric two-sided availability, not total radio transmission time.</p><h3>A defined search, not a global optimum</h3><p>The initial package has three numerical study sites. The date search uses the step size and maximum delay you specify, includes the endpoint, and is capped at 300 combinations. Unsupported dates are reported.</p>`));
+document.querySelectorAll('[data-camera]').forEach(b=>b.addEventListener('click',()=>{state.scene?.setCameraPreset(b.dataset.camera);}));
+onSkyImagesReady(()=>{if(state.view==='mission')drawHorizon();});
+$('adoptAlternative').addEventListener('click',adopt);$('restoreCurrent').addEventListener('click',restore);$('focusCurrent').addEventListener('click',()=>focus('current'));$('focusAlternative').addEventListener('click',()=>focus('alternative'));$('frameBoth').addEventListener('click',()=>{setView('mission');state.scene?.setCameraPreset('wide');state.mapScene?.reset();});$('resetView').addEventListener('click',()=>{if(['polar','sky'].includes(state.view))state.polar?.reset();else{state.scene?.setCameraPreset('close');state.mapScene?.reset();}});document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view))); document.querySelectorAll('[data-chart]').forEach(b=>b.addEventListener('click',()=>{state.chart=b.dataset.chart;document.querySelectorAll('[data-chart]').forEach(x=>x.classList.toggle('active',x===b));drawTimeline();}));
+$('timeSlider').addEventListener('input',()=>{stop();if(state.current)updateTime(Number($('timeSlider').value)/1000*clockRange(inspected()).durationHours);});$('playTime').addEventListener('click',play);$('jumpShadow').addEventListener('click',()=>jump('shadow'));$('jumpRadio').addEventListener('click',()=>jump('radio'));$('jumpReserve').addEventListener('click',()=>jump('reserve'));$('timelineCanvas').addEventListener('pointerdown',e=>{if(!state.current||state.dirty)return;const r=e.currentTarget.getBoundingClientRect(),u=clamp((e.clientX-r.left-46)/(r.width-64),0,1);stop();if(state.clockMode!=='mission')setClock('mission');updateTime(u*state.current.settings.durationHours);});
+$('resetDemo').addEventListener('click',async()=>{await route('planner');if(state.searching)await cancelSearch(false);if(state.busy)return;state.revision++;writeSettings();state.dirty=true;await calculateCurrent();toast('Original seven-day example restored.');});$('resetHardware').addEventListener('click',()=>{const s=readSettings();writeSettings({siteId:s.siteId,startUTC:s.startUTC,durationHours:s.durationHours});dirty();});$('saveScenario').addEventListener('click',save);$('openScenario').addEventListener('click',()=>$('scenarioFile').click());$('scenarioFile').addEventListener('change',e=>{openFile(e.target.files[0]);e.target.value='';});$('exportCSV').addEventListener('click',exportCSV);$('copyCoordinates').addEventListener('click',async()=>{const s=state.bundle.sites.find(x=>x.id===$('siteId').value),text=`${s.latitude_deg.toFixed(6)}, ${s.longitude_deg.toFixed(6)}`;try{await navigator.clipboard.writeText(text);toast('Coordinates copied.');}catch{const t=document.createElement('textarea');t.value=text;document.body.append(t);t.select();document.execCommand('copy');t.remove();toast('Coordinates: '+text);}});
+$('importTerrain').addEventListener('click',()=>$('terrainFile').click());$('terrainFile').addEventListener('change',async e=>{try{if(state.busy||state.searching)throw new Error('Finish or cancel the calculation before importing a site.');const file=e.target.files[0];if(!file)return;const obj=JSON.parse(await file.text()),site=await addImportedSite(obj.site||obj);$('siteId').value=site.id;dirty();toast('Numerical site imported. Check the plan to calculate.');}catch(err){toast(err.message,true);}finally{e.target.value='';}});$('dataImportSite').addEventListener('click',()=>{$('terrainFile').click();closeDrawer();});$('dataSaveScenario').addEventListener('click',()=>{save();closeDrawer();});$('dataOpenScenario').addEventListener('click',()=>{$('scenarioFile').click();closeDrawer();});$('onlineCheck').addEventListener('click',runOnlineCheck);
+window.addEventListener('resize',()=>{state.scene?.resize();state.mapScene?.resize();state.polar?.resize();drawAll();});document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
+
+document.querySelectorAll('[data-clock]').forEach(b=>b.addEventListener('click',()=>setClock(b.dataset.clock)));
+document.querySelectorAll('[data-space-camera]').forEach(b=>b.addEventListener('click',()=>{state.polar?.setCamera(b.dataset.spaceCamera);b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));}));
+$('showSkyPaths').addEventListener('change',()=>{if(state.polar){state.polar.showPaths=$('showSkyPaths').checked;state.polar.render();}});
+$('nextTogether').addEventListener('click',()=>jumpTogether(false));$('playTogether').addEventListener('click',()=>jumpTogether(true));
+$('visibilityCanvas').addEventListener('pointerdown',e=>{if(!state.current||state.dirty)return;leaveLiveForPlayback();stop();const r=e.currentTarget.getBoundingClientRect(),left=r.width<450?87:100,u=clamp((e.clientX-r.left-left)/(r.width-left-10),0,1);updateTime(u*clockRange(inspected()).durationHours);});
+$('visibilityInfo').addEventListener('click',()=>drawer('Sun + Earth visibility',`<h3>Visibility is evaluated at the lander</h3><p>The presentation camera does not decide whether the Sun or Earth is visible. The numerical model compares their directions with the selected collector or antenna terrain skyline.</p><p><strong>Sunlight:</strong> some portion of the solar disc reaches the collector, including the model's opaque-Earth eclipse mask. <strong>Earth centre:</strong> Earth's centre is above the antenna skyline. <strong>Both visible:</strong> the overlap of those two conditions. <strong>Ground access:</strong> the selected station is clear of lunar terrain and above its Earth-side elevation mask.</p><p>Shared visibility is not the same as radio transmission. The radio also needs an adequate link budget, battery power and remaining data.</p><h3>Reading this clock</h3><p>Mission mode compares A and B at the same elapsed time after their own landings. <strong>30-day sky</strong> explores the sky without changing mission energy or data results. <strong>Now</strong> uses your computer's UTC clock and the packaged ephemeris: it is not live imagery.</p><p>Windows are estimated from the mission sample interval or a 15-minute sky scan with refined detected transitions. Events shorter than the scan interval may be missed. Endpoints clipped by the viewing interval are not necessarily real rise/set events.</p><h3>Visual scale</h3><p>The south-pole globe is spherical; its sunlight shading is a smooth-sphere illustration, not a terrain-wide shadow map. Body sizes, display distances and site markers are enlarged. The lander panorama uses a fourfold vertical-angle scale; its Sun/Earth discs are magnified and clipped against the measured skyline. Neither display scale affects the calculations.</p>`));
+
+window.LunaShift={state,setClock,clockRange,visibilityData,jumpTogether,play,readSettings,writeSettings,calculateCurrent,search,focus,updateTime,setView,drawAll,demo,adopt,restore,stop,searchOptions,exportCSV,save,openFile};
+experience=initPlannerExperience({...window.LunaShift,callWorker,selectChoice,drawer,jump});
+window.LunaShift.experience=experience;
+route(location.hash==='#planner'?'planner':'overview').catch(console.error);
