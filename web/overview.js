@@ -58,23 +58,64 @@ export class OverviewScene extends PolarScene {
   }
   const bodies=[];
   for(const kind of ['sun','earth']){
-   const pos=bodyDisplayPoint(site,s[kind+'PositionKm'],2.15),p=project(pos);
+   const positionKm=s[kind+'PositionKm'];
+   const p=project(bodyDisplayPoint(site,positionKm,2.15));
+   const depthKm=dot(positionKm,basis.front);
    const radius=mobile?(kind==='sun'?26:31):(kind==='sun'?40:47);
    const margin=radius+18;
    const x=clamp(p.x,margin,w-margin),y=clamp(p.y,margin+25,h-radius-62);
    const offFrame=Math.abs(x-p.x)+Math.abs(y-p.y)>3;
    const tone=kind==='sun'?'#e8bf75':'#8fbddb';
+   bodies.push({kind,x,y,radius,tone,depthKm,trueProjection:p,offFrame});
    const visible=kind==='sun'?s.sunVisible===1:s.earthVisible===1;
    // A segmented direction line is always explanatory, not a claim that a radio link exists.
    const length=Math.hypot(x-sitePoint.x,y-sitePoint.y),u=length>0?Math.max(0,1-(radius+9)/length):0;
    c.save();c.globalAlpha=visible?.55:.28;c.lineWidth=.9;c.strokeStyle=tone;c.setLineDash(visible?[2,5]:[2,7]);c.beginPath();c.moveTo(sitePoint.x,sitePoint.y);c.lineTo(sitePoint.x+(x-sitePoint.x)*u,sitePoint.y+(y-sitePoint.y)*u);c.stroke();c.restore();
+  }
+  bodies.sort((a,b)=>a.depthKm-b.depthKm);
+  const [far,near]=bodies;
+  const separation=Math.hypot(near.x-far.x,near.y-far.y);
+  const overlap=separation<near.radius+far.radius;
+  const coincident=separation+Math.abs(near.radius-far.radius)<=1;
+  const moon={x:cx,y:cy,radius:r};
+  for(const [i,body] of bodies.entries()){
+   const {kind,x,y,radius}=body;
+   const blockers=bodies.slice(i+1);
+   if(body.depthKm<0)blockers.push(moon);
+   body.hiddenRegion=new Path2D();
+   c.save();
+   for(const blocker of blockers){
+    const disc=new Path2D();
+    disc.arc(blocker.x,blocker.y,blocker.radius,0,Math.PI*2);
+    body.hiddenRegion.addPath(disc);
+    const outside=new Path2D(disc);
+    outside.rect(0,0,w,h);
+    c.clip(outside,'evenodd');
+   }
    drawCelestial(c,kind,x,y,radius,{glow:true});
+   c.restore();
+  }
+  // Overlay hidden arcs after all foreground bodies have been painted.
+  for(const body of bodies){
+   const {kind,x,y,radius,tone,hiddenRegion,offFrame}=body;
+   if(coincident && body===far)continue;
+   c.save();
+   c.clip(hiddenRegion);
+   c.strokeStyle=tone;c.lineWidth=1.5;c.setLineDash([4,3]);
+   c.beginPath();c.arc(x,y,radius,0,Math.PI*2);c.stroke();
+   c.restore();
+   if(overlap)continue;
    const ly=y+radius+23;
    this.text(c,kind==='sun'?'SUN':'EARTH',x,ly,mobile?10:12,tone,'center','600');
    const dist=Math.hypot(...s[kind+'PositionKm']);
    const d=kind==='sun'?(dist/1e6).toFixed(1)+' million km':Math.round(dist).toLocaleString('en-US')+' km';
    this.text(c,offFrame?'Direction extends beyond view':d+' from Moon',x,ly+18,mobile?9:11,'#8b9bad','center');
-   bodies.push({kind,x,y,radius,trueProjection:p,offFrame});
+  }
+  if(overlap){
+   const label=near.kind==='earth'?'Earth in front of Sun':'Sun in front of Earth';
+   const x=clamp((near.x+far.x)/2,72,w-72);
+   const y=Math.max(near.y+near.radius,far.y+far.radius)+23;
+   this.text(c,label,x,y,mobile?10:12,near.tone,'center','600');
   }
   // Thin compass indicators describe the camera instead of decorative orbit rings.
   this.text(c,'90° S',pole.x+(mobile?-25:0),pole.y+(mobile?-18:-22),10,'#8f9eae','center');
