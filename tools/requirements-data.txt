@@ -1,8 +1,0 @@
-# Optional source-data regeneration only; not needed to run the app.
-# Use an isolated Python 3.12+ environment. Dependencies are intentionally not
-# pinned to the legacy machine; regenerate and rerun the validation checks.
-numpy>=2.0
-scipy>=1.13
-rasterio>=1.4
-pyproj>=3.7
-spiceypy>=6.0
