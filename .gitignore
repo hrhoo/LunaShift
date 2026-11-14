@@ -1,0 +1,30 @@
+__pycache__/*
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Local caches and editor files
+.npm-cache/
+.bun-tmp/
+.vite/
+*.tsbuildinfo
+.idea/
+.vscode/
+Thumbs.db
+
+# AI Studio export references and one-off extraction helper
+/images/
+/extract.js
+/public/assets/aistudio/*
+!/public/assets/aistudio/24883_MER_static-1.glb
+!/public/assets/aistudio/earth.glb
+!/public/assets/aistudio/moon_small.glb
+!/public/assets/aistudio/nasa_sls_block_1_crew_v4.glb
+!/public/assets/aistudio/Luna_Shift__2__8704c0a0.png
+!/public/assets/aistudio/Luna_Shift__3__4181c459.png
+/components/ui/moon_surface (1).glb

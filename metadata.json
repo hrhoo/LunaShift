@@ -1,0 +1,6 @@
+{
+  "name": "Rocket Loader Canvas",
+  "description": "An animated neumorphic rocket and clouds loader centered on a black canvas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
