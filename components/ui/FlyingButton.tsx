@@ -639,6 +639,7 @@ interface EngineProps {
   smoke: number;
   turbulence: number;
   wobble: number;
+  lockHorizontal?: boolean;
   thrustColor: string;
   smokeColor: string;
   theme: Theme;
@@ -1578,10 +1579,17 @@ function createEngine({ root, canvas, button, cursor, ramp, props }: EngineArgs)
       s.th = Math.sign(s.th) * TILT_MAX;
       if (s.w * s.th > 0) s.w = 0;
     }
-    const [lo, hi] = xLimits();
-    if (s.x < lo || s.x > hi) {
-      s.x = clamp(s.x, lo, hi);
+    if (P.lockHorizontal) {
+      s.x = s.xRef || home();
       s.vx = 0;
+      s.th = 0;
+      s.w = 0;
+    } else {
+      const [lo, hi] = xLimits();
+      if (s.x < lo || s.x > hi) {
+        s.x = clamp(s.x, lo, hi);
+        s.vx = 0;
+      }
     }
     if (s.y + REST < -40) {
       s.y = -REST;
@@ -1701,7 +1709,7 @@ function createEngine({ root, canvas, button, cursor, ramp, props }: EngineArgs)
     const f = pointerAt();
     const [lo, hi] = xLimits();
     const low = podH() + s.bh / 2;
-    s.target.x = clamp(f.x - s.drag.gx, lo, hi);
+    s.target.x = props.current.lockHorizontal ? (s.xRef || home()) : clamp(f.x - s.drag.gx, lo, hi);
     s.target.y = clamp(s.H - (f.y - s.drag.gy), low, Math.max(low, s.H - s.bh / 2 - 6));
   };
 
@@ -2183,6 +2191,7 @@ export interface FlyingButtonProps {
   smoke?: number;
   turbulence?: number;
   wobble?: number;
+  lockHorizontal?: boolean;
   thrustColor?: string;
   smokeColor?: string;
   buttonColor?: string;
@@ -2209,6 +2218,7 @@ export default function FlyingButton({
   smoke = 1,
   turbulence = 1,
   wobble = 1,
+  lockHorizontal = false,
   thrustColor,
   smokeColor,
   buttonColor,
@@ -2249,6 +2259,7 @@ export default function FlyingButton({
     smoke,
     turbulence,
     wobble,
+    lockHorizontal: Boolean(lockHorizontal),
     thrustColor: thrust,
     smokeColor: smokeTone,
     theme,
