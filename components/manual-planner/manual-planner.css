@@ -1583,7 +1583,7 @@
   cursor: pointer;
 }
 
-.manual-planner-shell .time-scrubber span {
+.manual-planner-shell .time-scrubber > #timeReadout {
   font: 9px var(--mono);
   white-space: nowrap;
   min-width: 85px;
@@ -3336,7 +3336,7 @@
     padding-right: 0;
     gap: 10px;
   }
-  .manual-planner-shell .time-scrubber span {
+  .manual-planner-shell .time-scrubber > #timeReadout {
     font-size: 8px;
     min-width: 70px;
   }

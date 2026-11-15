@@ -68,7 +68,7 @@
 .manual-planner-shell #plannerPage :is(.case-state.pass,.plain-row .changed-value){color:#5eead4}
 .manual-planner-shell #plannerPage .case-state.fail{color:#fdba74}
 .manual-planner-shell #plannerPage .time-scrubber input{accent-color:#5eead4}
-.manual-planner-shell #plannerPage :is(.time-scrubber span,.play-controls .icon-btn,.luna-guide-header .icon-btn){color:var(--muted)}
+.manual-planner-shell #plannerPage :is(.time-scrubber > #timeReadout,.play-controls .icon-btn,.luna-guide-header .icon-btn){color:var(--muted)}
 .manual-planner-shell #plannerPage #timelineCanvas{height:238px}
 .manual-planner-shell #plannerPage .timeline-legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 15px;color:var(--muted);font-size:11px}
 .manual-planner-shell #plannerPage .timeline-legend span{display:inline-flex;align-items:center;gap:5px}

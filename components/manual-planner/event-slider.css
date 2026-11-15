@@ -1,0 +1,38 @@
+/* True-time flags: exact dots on the track, readable symbols above and below. */
+#plannerPage .time-scrubber{display:block;padding:0;margin:20px 0 12px}
+#plannerPage #timeReadout{display:block;text-align:right;margin-bottom:12px;font:11px var(--mono);color:#b7c6de}
+.event-scale-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 22px;color:#9db3c6}
+.event-scale-controls>span{font:9px var(--mono);letter-spacing:1.3px}
+.event-scale-controls select{max-width:100%;padding:7px 9px;border:1px solid #40566d;border-radius:6px;background:#152235;color:#c5d3df;font:11px var(--mono)}
+.event-timeline{position:relative;width:100%;isolation:isolate}
+#plannerPage #timeRange{position:absolute;left:0;display:block;box-sizing:border-box;width:100%;height:28px;min-height:28px;margin:0;padding:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:ew-resize;z-index:2}
+#plannerPage #timeRange{--event-accent:#5eead4}
+#timeRange::-webkit-slider-runnable-track{height:4px;background:linear-gradient(to right,var(--event-accent) var(--event-progress,0%),#526173 var(--event-progress,0%));border-radius:3px}
+#timeRange::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:22px;height:22px;margin-top:-9px;border:3px solid var(--event-accent);border-radius:50%;background:#101c2a;box-shadow:0 0 0 3px #101c2a}
+#timeRange::-moz-range-track{height:4px;background:#526173;border-radius:3px}
+#timeRange::-moz-range-progress{height:4px;background:var(--event-accent)}
+#timeRange::-moz-range-thumb{box-sizing:border-box;width:22px;height:22px;border:3px solid var(--event-accent);border-radius:50%;background:#101c2a}
+#timeRange:focus-visible{outline:2px solid var(--event-accent);outline-offset:4px;border-radius:6px}
+#plannerPage .event-callouts{position:absolute;top:0;left:0;width:100%;display:block;margin:0;padding:0;border:0;pointer-events:none}
+.event-callouts .event-leaders{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;color:#647b92}
+.event-leaders path{fill:none;stroke:currentColor;stroke-width:1;opacity:.8}
+.event-leaders circle{fill:#101c2a;stroke:currentColor;stroke-width:1.5}
+.event-leaders .reached{color:#65afa5}.event-leaders .selected,.event-leaders .highlighted{color:#e0be79}
+.event-leaders .highlighted path,.event-leaders .selected path{stroke-width:1.7}
+.event-callouts .event-callout{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;box-sizing:border-box;min-height:90px;height:90px;padding:0 4px;border:0;border-radius:5px;background:transparent;color:#9db3c6;text-align:center;cursor:pointer;pointer-events:auto;z-index:3}
+.event-callout .event-symbol{display:grid;place-items:center;flex-shrink:0;width:42px;height:42px;min-width:0;border:1px solid #40566d;border-radius:50%;background:#152235}
+.event-callout .icon{width:19px;height:19px}
+.event-callout>span{min-width:0;font-size:11px;line-height:1.4;white-space:normal}
+.event-callout small{display:block;font-size:11px;color:inherit}
+.event-callout b{display:block;margin-top:3px;font:10px var(--mono);color:#c4d2df}
+.event-callout.reached{color:#5eead4}.event-callout.reached .event-symbol{border-color:#39766f}
+.event-callout[aria-pressed=true]{color:#e0be79}.event-callout[aria-pressed=true] .event-symbol{border-color:#e0be79;box-shadow:0 0 0 3px #e0be7912}
+.event-callout:hover{color:#f0d395}.event-callout:hover .event-symbol{border-color:#f0d395}
+.event-callout:focus-visible{outline:2px solid #f0d395;outline-offset:3px}
+.event-callout:disabled{opacity:.45;cursor:default}
+.event-axis-ticks{position:absolute;left:0;right:0;color:#9db3c6;font:10px var(--mono)}
+.event-axis-ticks>span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.event-axis-ticks>span:first-child{transform:none}
+.event-axis-ticks>span:last-child{transform:translateX(-100%)}
+#plannerPage .event-axis-ticks span{min-width:0;font:10px var(--mono);color:#9db3c6}
+@media(max-width:480px){.event-scale-controls{margin-bottom:18px}.event-scale-controls>span{font-size:8px}.event-axis-ticks,#plannerPage .event-axis-ticks span{font-size:9px}}
