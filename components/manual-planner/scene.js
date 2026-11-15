@@ -91,7 +91,7 @@ export class MissionScene {
     this.disposed = false;
 
     this.scene = new T.Scene();
-    this.scene.background = new T.Color('#050a10');
+    this.scene.background = new T.Color('#101827');
     this.camera = new T.PerspectiveCamera(44, 1, 0.05, 20000);
     this.camera.position.set(7, 4.4, 9);
 

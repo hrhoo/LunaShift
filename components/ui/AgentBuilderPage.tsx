@@ -65,8 +65,8 @@ import {
   Tick02Icon,
 } from '@hugeicons/core-free-icons';
 import LunarRoverScene from './LunarRoverScene';
-import LunaMascot from './LunaMascot';
 import PlannerHudOverlay from './PlannerHudOverlay';
+import LunaMascot from './LunaMascot';
 import DecryptedText from './DecryptedText';
 import IconSlidersVertical from './IconSlidersVertical';
 import SpecularButton from './SpecularButton';
@@ -3976,11 +3976,10 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenManualPlanner?.()}
-                className="h-7 px-2 flex items-center gap-1.5 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
-                aria-label="Open Planner tab"
-                title="Planner"
+                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="manual"
+                title="manual"
               >
-                <span className="text-xs">Planner</span>
                 <IconSlidersVertical size="20px" />
               </button>
 
@@ -4024,18 +4023,18 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
             animate={{ maxWidth: 500, opacity: 1 }}
             exit={{ maxWidth: 0, opacity: 0 }}
             transition={{ type: 'spring', bounce: 0, duration: 0.35 }}
-            className="h-full flex flex-col shrink-0 border-l border-white/5 overflow-hidden"
+            className="h-full flex flex-col shrink-0 overflow-hidden"
             style={{ backgroundColor: '#141414' }}
           >
-            <div className="w-[100vw] lg:w-[381px] xl:w-[418px] flex flex-col h-full shrink-0">
-              <div className="flex shrink-0 flex-col items-center gap-1 px-5 py-3 text-center border-b border-white/5">
+            <div className="w-[100vw] lg:w-[381px] xl:w-[418px] flex flex-col h-full shrink-0 px-2.5 pb-2.5 pt-3 sm:pr-3 sm:pb-3 lg:pl-0.5">
+              <div className="relative z-20 flex justify-center shrink-0 pointer-events-none -mb-[13px]">
                 <LunaMascot responding={isLoading || missionStore.busy} active={sceneActive && isChatOpen} />
-                <div>
-                  <h2 className="text-sm font-medium text-neutral-100">Luna</h2>
-                  <p className="text-[11px] text-neutral-400">Your mission planner guide</p>
-                </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 chat-scrollbar-hidden">
+              <div
+                className="relative z-10 flex-1 min-h-0 flex flex-col rounded-[22px] border border-white/[0.08] overflow-hidden"
+                style={{ backgroundColor: '#171717' }}
+              >
+                <div className="flex-1 overflow-y-auto px-4 pt-5 pb-4 space-y-4 chat-scrollbar-hidden">
 
                 {/* Conversation Messages */}
                 {messages.map(msg => (
@@ -4566,6 +4565,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             </div>
           </motion.div>

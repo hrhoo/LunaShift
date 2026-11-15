@@ -1,26 +1,38 @@
-/* Scoped Manual Planner styles — Dark Cosmic Charcoal & Cyan aesthetic aligned with Luna Planner */
+/* Scoped Manual Planner styles — Navy Reference Palette aligned with updated Luna Shift web/ */
 .manual-planner-shell {
-  --paper: #141414;
-  --surface: #1b1d21;
-  --surface-2: #222222;
-  --surface-3: #282b30;
-  --white: #1b1d21;
-  --ink: #f3f4f6;
-  --muted: #9ca3af;
-  --dim: #6b7280;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --soft: rgba(255, 255, 255, 0.06);
-  --gold: #fbbf24;
-  --gold-dark: #d97706;
-  --teal: #22d3ee;
-  --cyan: #0da1b2;
-  --emerald: #34d399;
-  --blue: #38bdf8;
-  --red: #f87171;
-  --navy: #0a0e16;
+  --paper: #101827;
+  --surface: #162132;
+  --surface-2: #1e293b;
+  --surface-3: #253b49;
+  --white: #162132;
+  --ink: #f1f5ff;
+  --muted: #b7c6de;
+  --dim: #94a3b8;
+  --line: #334155;
+  --line-strong: #40566d;
+  --soft: #1e293b;
+  --gold: #facc15;
+  --gold-dark: #b88900;
+  --teal: #5eead4;
+  --cyan: #5eead4;
+  --emerald: #5eead4;
+  --blue: #93c5fd;
+  --red: #fb7185;
+  --navy: #101827;
   --radius: 16px;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --planner-ink: #f1f5ff;
+  --planner-muted: #b7c6de;
+  --planner-line: #334155;
+  --planner-track: #1e293b;
+  --planner-sun: #b88900;
+  --planner-sun-icon: #fff3b0;
+  --planner-measurement: #1e40af;
+  --planner-measurement-icon: #dbeafe;
+  --planner-earth: #115e59;
+  --planner-earth-icon: #99f6e4;
+  --planner-transmission: #a78bfa;
+  --planner-transmission-icon: #1e1045;
 }
 
 .manual-planner-shell,
@@ -71,7 +83,7 @@
 .manual-planner-shell input:focus-visible,
 .manual-planner-shell textarea:focus-visible,
 .manual-planner-shell select:focus-visible {
-  outline: 2px solid #22d3ee;
+  outline: 2px solid #5eead4;
   outline-offset: 2px;
 }
 
@@ -122,7 +134,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 3.4%;
-  background: var(--surface-2);
+  background: #101827;
   border-bottom: 1px solid var(--line);
 }
 
@@ -187,19 +199,19 @@
   gap: 7px;
   padding: 8px 13px;
   border-radius: 10px;
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  background: #1e293b;
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
 }
 
 .manual-planner-shell .manual-header-back:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.24);
+  background: #253b49;
+  border-color: #5eead4;
 }
 
-/* Primary & Secondary CTAs matching AgentBuilderPage */
+/* Primary & Secondary CTAs matching Navy Reference Palette */
 .manual-planner-shell .primary,
 .manual-planner-shell .secondary {
   font-size: 12px;
@@ -210,15 +222,16 @@
 }
 
 .manual-planner-shell .primary {
-  background: var(--cyan);
-  color: #031318;
-  border: 1px solid rgba(94, 234, 212, 0.4);
-  box-shadow: 0 0 18px rgba(13, 161, 178, 0.25);
+  background: #5eead4;
+  color: #083b36;
+  border: 1px solid #5eead4;
+  box-shadow: 0 0 18px rgba(94, 234, 212, 0.16);
 }
 
 .manual-planner-shell .primary:hover {
-  background: #15b8cb;
-  box-shadow: 0 0 24px rgba(13, 161, 178, 0.42);
+  background: #99f6e4;
+  border-color: #99f6e4;
+  box-shadow: 0 0 24px rgba(94, 234, 212, 0.28);
 }
 
 .manual-planner-shell .primary .icon,
@@ -228,14 +241,14 @@
 }
 
 .manual-planner-shell .secondary {
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.05);
-  color: #e5e7eb;
+  border: 1px solid var(--line);
+  background: #1e293b;
+  color: var(--ink);
 }
 
 .manual-planner-shell .secondary:hover {
-  background: rgba(255, 255, 255, 0.11);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: #253b49;
+  border-color: #5eead4;
 }
 
 .manual-planner-shell .primary.large {
@@ -345,25 +358,25 @@
 }
 
 .manual-planner-shell .decision-steps > .active {
-  color: #67e8f9;
+  color: #5eead4;
 }
 
 .manual-planner-shell .decision-steps > .active b {
-  background: var(--cyan);
-  border-color: var(--teal);
-  color: #031318;
+  background: #5eead4;
+  border-color: #5eead4;
+  color: #083b36;
   font-weight: 700;
-  box-shadow: 0 0 0 4px rgba(13, 161, 178, 0.18);
+  box-shadow: none;
 }
 
 .manual-planner-shell .decision-steps > .done {
-  color: var(--emerald);
+  color: #5eead4;
 }
 
 .manual-planner-shell .decision-steps > .done b {
-  background: rgba(52, 211, 153, 0.16);
-  border-color: rgba(52, 211, 153, 0.35);
-  color: #6ee7b7;
+  background: #115e59;
+  border-color: #2dd4bf;
+  color: #99f6e4;
 }
 
 .manual-planner-shell .decision-steps > i {
@@ -1478,9 +1491,9 @@
 }
 
 .manual-planner-shell .play-btn {
-  background: rgba(13, 161, 178, 0.16);
-  border: 1px solid rgba(34, 211, 238, 0.35);
-  color: #67e8f9;
+  background: #1e293b;
+  border: 1px solid var(--line);
+  color: var(--ink);
   padding: 9px 12px;
   border-radius: 8px;
   font-size: 10px;
@@ -1488,7 +1501,8 @@
 }
 
 .manual-planner-shell .play-btn:hover {
-  background: rgba(13, 161, 178, 0.28);
+  background: #253b49;
+  border-color: #5eead4;
 }
 
 .manual-planner-shell .play-btn .icon {
@@ -1506,97 +1520,13 @@
   color-scheme: dark;
 }
 
-.manual-planner-shell .milestones {
-  display: flex;
-  margin: 22px 0 13px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 14px 0;
-  gap: 10px;
-}
-
-.manual-planner-shell .milestone {
-  flex: 1;
-  justify-content: flex-start;
-  gap: 9px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  text-align: left;
-  border-right: 1px solid var(--line);
-}
-
-.manual-planner-shell .milestone:last-child {
-  border: 0;
-}
-
-.manual-planner-shell .milestone > span:first-child {
-  width: 29px;
-  height: 29px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 50%;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.manual-planner-shell .milestone.reached > span:first-child {
-  background: rgba(52, 211, 153, 0.16);
-  color: var(--emerald);
-}
-
-.manual-planner-shell .milestone .icon {
-  width: 14px;
-  height: 14px;
-}
-
-.manual-planner-shell .milestone small {
-  display: block;
-  font-size: 8px;
-  color: var(--muted);
-}
-
-.manual-planner-shell .milestone b {
-  font: 11px var(--mono);
-  color: var(--ink);
-  display: block;
-  margin-top: 3px;
-  white-space: nowrap;
-}
-
-.manual-planner-shell .milestone:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.manual-planner-shell .time-scrubber {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 0 10px 6px 90px;
-}
-
-.manual-planner-shell .time-scrubber input {
-  width: 100%;
-  accent-color: #22d3ee;
-  height: 4px;
-  cursor: pointer;
-}
-
-.manual-planner-shell .time-scrubber > #timeReadout {
-  font: 9px var(--mono);
-  white-space: nowrap;
-  min-width: 85px;
-  color: #d1d5db;
-}
-
 .manual-planner-shell .timeline-plot {
   position: relative;
 }
 
 .manual-planner-shell #timelineCanvas {
   width: 100%;
-  height: 182px;
+  height: 238px;
   display: block;
   cursor: crosshair;
 }
@@ -2719,10 +2649,10 @@
   bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
-  border: 1px solid rgba(34, 211, 238, 0.35);
+  border: 1px solid var(--line);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
-  background: var(--surface-2);
-  color: #f3f4f6;
+  background: #162132;
+  color: #f1f5ff;
   padding: 13px 19px;
   z-index: 110;
   border-radius: 10px;
@@ -2736,7 +2666,7 @@
 .manual-planner-shell .spinner {
   width: 13px;
   height: 13px;
-  border: 2px solid rgba(34, 211, 238, 0.25);
+  border: 2px solid rgba(94, 234, 212, 0.25);
   border-top-color: var(--teal);
   border-radius: 50%;
   animation: manual-planner-spin 0.8s linear infinite;
@@ -3027,13 +2957,6 @@
     width: 18px;
     height: 18px;
   }
-  .manual-planner-shell .milestone {
-    padding: 0 5px;
-    gap: 6px;
-  }
-  .manual-planner-shell .milestone b {
-    font-size: 10px;
-  }
 }
 
 @media (max-width: 850px) {
@@ -3094,9 +3017,6 @@
   .manual-planner-shell .mission-evidence .timeline-title {
     flex-direction: column;
     align-items: flex-start;
-  }
-  .manual-planner-shell .mission-evidence .milestones {
-    grid-template-columns: repeat(3, 1fr);
   }
   .manual-planner-shell .planner-detail-links > span {
     width: 100%;
@@ -3306,42 +3226,6 @@
     font-size: 7px;
     padding: 8px 3px;
     max-width: 74px;
-  }
-  .manual-planner-shell .milestones {
-    gap: 0;
-    padding: 12px 0;
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-  .manual-planner-shell .milestone {
-    min-width: 33%;
-    flex: 1;
-    padding: 0 5px;
-  }
-  .manual-planner-shell .milestone:nth-child(3) {
-    border: 0;
-  }
-  .manual-planner-shell .milestone b {
-    font-size: 9px;
-  }
-  .manual-planner-shell .milestone > span:first-child {
-    width: 23px;
-    height: 23px;
-  }
-  .manual-planner-shell .milestone small {
-    font-size: 7px;
-  }
-  .manual-planner-shell .time-scrubber {
-    padding-left: 67px;
-    padding-right: 0;
-    gap: 10px;
-  }
-  .manual-planner-shell .time-scrubber > #timeReadout {
-    font-size: 8px;
-    min-width: 70px;
-  }
-  .manual-planner-shell #timelineCanvas {
-    height: 190px;
   }
   .manual-planner-shell .timeline-bottom {
     flex-direction: column;
@@ -3667,4 +3551,423 @@
 
 .manual-planner-shell :where(ol) {
   list-style: decimal;
+}
+
+/* Reference palette: navy surfaces, gold sunlight, blue science, teal Earth, lavender radio. */
+.manual-planner-shell #plannerPage {
+  color-scheme: dark;
+  background: #101827;
+  color: #f1f5ff;
+  --paper: #101827;
+  --white: #162132;
+  --ink: #f1f5ff;
+  --muted: #b7c6de;
+  --line: #334155;
+  --soft: #1e293b;
+  --teal: #5eead4;
+  --blue: #93c5fd;
+  --gold: #facc15;
+  --red: #fb7185;
+  --planner-ink: #f1f5ff;
+  --planner-muted: #b7c6de;
+  --planner-line: #334155;
+  --planner-track: #1e293b;
+  --planner-sun: #b88900;
+  --planner-sun-icon: #fff3b0;
+  --planner-measurement: #1e40af;
+  --planner-measurement-icon: #dbeafe;
+  --planner-earth: #115e59;
+  --planner-earth-icon: #99f6e4;
+  --planner-transmission: #a78bfa;
+  --planner-transmission-icon: #1e1045;
+}
+
+.manual-planner-shell #plannerPage :is(
+  .current-plan-strip,
+  .planner-editor,
+  .mission-evidence,
+  .decision-workspace,
+  .timeline-section,
+  .metric,
+  .scenario-bar,
+  .luna-option,
+  .adoption-review,
+  .mission-stage
+) {
+  background: #162132;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage :is(
+  h1,
+  h2,
+  h3,
+  .current-plan-strip strong,
+  .decision-metrics strong,
+  .luna-option dd,
+  .plain-row strong,
+  .scope-options b,
+  .metric-content b,
+  .comparison-column-head b
+) {
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage :is(
+  p,
+  label,
+  .eyebrow,
+  small,
+  .luna-planner-heading .eyebrow,
+  .current-plan-strip small,
+  .decision-metrics small,
+  .option-date,
+  .luna-option dt,
+  .planner-detail-links > span,
+  .evidence-context,
+  .plain-row > span,
+  .timeline-bottom p,
+  .metric-content > span,
+  .option-tag,
+  .search-context,
+  .search-boundary,
+  .change-footer > span,
+  .footer,
+  .footer span
+) {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage :is(
+  .current-plan-strip > div:not(:first-child),
+  .decision-metrics > div + div,
+  .plain-row,
+  .decision-steps,
+  .decision-metrics,
+  .decision-question,
+  .comparison-column-head,
+  .change-footer,
+  .timeline-bottom,
+  .adoption-actions,
+  .all-cases,
+  .footer
+) {
+  border-color: var(--line);
+}
+
+.manual-planner-shell #plannerPage :is(.primary, .decision-question .primary, .adoption-actions .primary) {
+  background: #5eead4;
+  border-color: #5eead4;
+  color: #083b36;
+}
+
+.manual-planner-shell #plannerPage :is(.primary, .decision-question .primary, .adoption-actions .primary):hover {
+  background: #99f6e4;
+  border-color: #99f6e4;
+}
+
+.manual-planner-shell #plannerPage :is(
+  .secondary,
+  .play-btn,
+  .change-kind button,
+  .scope-options button,
+  .change-fields input,
+  .change-fields select,
+  .scenario-bar select,
+  .scenario-bar input,
+  .play-controls select
+) {
+  background: #1e293b;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage :is(.secondary, .scope-options button):hover {
+  background: #253b49;
+  border-color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage :is(
+  .text-btn,
+  .decision-steps > .active,
+  .decision-steps > .done,
+  .planner-detail-links > button,
+  .changed-value,
+  .all-cases > summary,
+  .planner-editor > summary
+) {
+  color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage .decision-steps > i {
+  background: var(--line);
+}
+
+.manual-planner-shell #plannerPage .decision-steps > span {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage .decision-steps b {
+  border-color: var(--line);
+}
+
+.manual-planner-shell #plannerPage .decision-steps > .active b {
+  background: #5eead4;
+  border-color: #5eead4;
+  color: #083b36;
+  box-shadow: none;
+}
+
+.manual-planner-shell #plannerPage :is(
+  .plan-pin,
+  .step-bubble,
+  .decision-steps > .done b,
+  .change-kind button.selected,
+  .luna-option.selected,
+  .option-change
+) {
+  background: #115e59;
+  color: #99f6e4;
+  border-color: #2dd4bf;
+}
+
+.manual-planner-shell #plannerPage .luna-option.selected {
+  box-shadow: 0 0 0 2px #115e59;
+}
+
+.manual-planner-shell #plannerPage .plan-verdict {
+  background: linear-gradient(115deg, #123b3b, #162132 76%);
+  border-color: #2c5a59;
+}
+
+.manual-planner-shell #plannerPage :is(.plan-verdict h2, .verdict-eyebrow, .verdict-checks > span, .verdict-why) {
+  color: #99f6e4;
+}
+
+.manual-planner-shell #plannerPage :is(.verdict-symbol, .verdict-why) {
+  background: #115e59;
+  border-color: #2c7b73;
+  color: #99f6e4;
+}
+
+.manual-planner-shell #plannerPage .verdict-eyebrow span {
+  border-color: #2c7b73;
+  color: #b7c6de;
+}
+
+.manual-planner-shell #plannerPage .plan-verdict.needs-attention {
+  background: linear-gradient(115deg, #442b20, #162132);
+  border-color: #80523a;
+}
+
+.manual-planner-shell #plannerPage :is(.needs-attention h2, .needs-attention .verdict-symbol, .verdict-checks .fail) {
+  color: #fdba74;
+}
+
+.manual-planner-shell #plannerPage :is(.needs-attention .verdict-symbol, .preview-ribbon, .no-options, .decision-error) {
+  background: #442b20;
+  border-color: #80523a;
+  color: #fdba74;
+}
+
+.manual-planner-shell #plannerPage :is(.dm-icon.solar, .metric-icon.gold, .phase-icon) {
+  background: #594610;
+  color: #fff3b0;
+}
+
+.manual-planner-shell #plannerPage :is(.dm-icon.battery, .metric-icon.sage) {
+  background: #14532d;
+  color: #86efac;
+}
+
+.manual-planner-shell #plannerPage :is(.dm-icon.contact, .metric-icon.blue) {
+  background: var(--planner-earth);
+  color: var(--planner-earth-icon);
+}
+
+.manual-planner-shell #plannerPage :is(.dm-icon.returned, .metric-icon.teal) {
+  background: #382a60;
+  color: var(--planner-transmission);
+}
+
+.manual-planner-shell #plannerPage :is(
+  .mission-evidence[open] > summary,
+  .stage-toolbar,
+  .scene-caption,
+  .horizon-head,
+  #horizonCanvas,
+  .scene-wrap
+) {
+  background: #101827;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage :is(
+  .stage-name b,
+  .horizon-head b,
+  .scene-location strong,
+  .scene-time strong,
+  .celestial-label strong,
+  .scene-phase b,
+  .scene-map > div
+) {
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage :is(
+  .stage-name > span,
+  .stage-actions button,
+  .horizon-head small,
+  .scene-location small,
+  .scene-time small,
+  .scene-location > span,
+  .scene-time span,
+  .celestial-label small,
+  .scene-phase small,
+  .scene-phase span:not(.phase-icon),
+  .scene-map small,
+  .scene-map > span
+) {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage :is(
+  .celestial-label,
+  .celestial-label.hidden-body,
+  .scene-phase,
+  .scene-map,
+  .camera-controls,
+  .scene-top
+) {
+  background: #101827ee;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.manual-planner-shell #plannerPage .scene-top {
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.manual-planner-shell #plannerPage .camera-controls button {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage .camera-controls button.active {
+  background: #115e59;
+  color: #99f6e4;
+}
+
+.manual-planner-shell #plannerPage .camera-controls button:hover {
+  background: #1e293b;
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage .stage-actions button.active {
+  color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage .stage-actions button:hover {
+  color: #99f6e4;
+}
+
+.manual-planner-shell #plannerPage .stage-name > span {
+  background: #1e293b;
+  border-color: var(--line);
+}
+
+.manual-planner-shell #plannerPage .horizon-key i.key-sun {
+  background: #facc15;
+}
+
+.manual-planner-shell #plannerPage .horizon-key i.key-earth {
+  background: #5eead4;
+}
+
+.manual-planner-shell #plannerPage #sceneFallback {
+  background: #101827;
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage #sceneFallback > span {
+  color: #facc15;
+}
+
+.manual-planner-shell #plannerPage .mission-stage.expanded {
+  box-shadow: 0 0 0 40px #101827db;
+}
+
+.manual-planner-shell #plannerPage :is(.cases-scroll, .cases-scroll td) {
+  border-color: var(--line);
+}
+
+.manual-planner-shell #plannerPage .cases-scroll th {
+  background: #1e293b;
+  color: var(--ink);
+}
+
+.manual-planner-shell #plannerPage .cases-scroll td {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage :is(.case-state.pass, .plain-row .changed-value) {
+  color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage .case-state.fail {
+  color: #fdba74;
+}
+
+.manual-planner-shell #plannerPage .time-scrubber input {
+  accent-color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage :is(.time-scrubber > span, .play-controls .icon-btn) {
+  color: var(--muted);
+}
+
+.manual-planner-shell #plannerPage #timelineCanvas {
+  height: 238px;
+}
+
+.manual-planner-shell #plannerPage .timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 8px 0 15px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.manual-planner-shell #plannerPage .timeline-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.manual-planner-shell #plannerPage .timeline-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  background: var(--legend-color);
+}
+
+.manual-planner-shell #plannerPage .timeline-legend .charge-key {
+  height: 3px;
+  background: linear-gradient(90deg, #4ade80, #facc15, #fb7185);
+}
+
+.manual-planner-shell dialog {
+  background: #162132;
+  color: #f1f5ff;
+  border-color: #334155;
+  color-scheme: dark;
+}
+
+.manual-planner-shell dialog :is(input, select, textarea) {
+  background: #1e293b;
+  color: #f1f5ff;
+  border-color: #334155;
 }
