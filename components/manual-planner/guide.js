@@ -1,0 +1,29 @@
+import {fmtHours,fmtDate,timeUTC} from './charts.js';
+/** The local guide deliberately exposes a bounded command set. It is not an LLM.
+ * Optional language-model output is handled by the server and validated in app.js.
+ */
+export function localGuide(text,context){
+ const q=text.toLowerCase().trim(),r=context.result,m=r.metrics,s=r.settings;
+ const reply=t=>({text:t,action:null});
+ if(/latest|last chance|last safe|last start/.test(q))return {action:'latest',text:'I’ll test starts on a 15-minute grid with the same energy, activity, and downlink assumptions.'};
+ if(/why.*(?:closer|nearer)|smaller change/.test(q))return {action:'compare',mode:'site',text:'I’ll compare the three prepared sites at the same landing time. The result only covers these evaluated locations.'};
+ if(/alternative|compare|better site|better date/.test(q))return {action:'compare',mode:/same date|keep.*date|location only|nearby/.test(q)?'site':/same site|keep.*site|date only/.test(q)?'date':'both',text:'I’ll keep the hardware and activity fixed and evaluate the permitted site/date alternatives.'};
+ if(/(?:show|go to|jump|watch).*(?:transmission|downlink|contact|sending|data return)/.test(q))return {action:'seek',event:'transmit',text:m.firstTxHour===null?'There is no powered transmission in this result. The view will focus on Earth and the limiting geometry.':`Transmission begins ${fmtHours(m.firstTxHour)} after landing. The moving bits appear only while data and radio power are available.`};
+ if(/(?:show|face|look).*(?:sun|solar)/.test(q))return {action:'camera',camera:'sun',text:'The horizon and Sun direction use the same calculated geometry. Dashed celestial markers show positions hidden by terrain.'};
+ if(/(?:show|face|look).*(?:earth|ground)/.test(q))return {action:'camera',camera:'earth',text:'Earth-disc visibility and access to the selected ground station are different. The station must also see the Moon above its Earth-side elevation mask.'};
+ const delay=q.match(/(?:delay|later|shift|move).*?(\d+(?:\.\d+)?)\s*(day|hour)/);
+ if(delay){const hours=+delay[1]*(delay[2]==='day'?24:1);return {action:'update',params:{startUTC:new Date(Date.parse(s.startUTC)+hours*3600000).toISOString()},text:`I’ll move the landing ${fmtHours(hours)} later and preserve the mission and hardware.`};}
+ const params={};
+ if(/(?:choose|select|use|try|go to).*(?:crest|shoulder|lower)/.test(q)){params.siteId=q.includes('shoulder')?'ridge-shoulder':q.includes('lower')?'ridge-low':'ridge-crest';}
+ const date=q.match(/\b(202[67]-\d\d-\d\d)(?:[t ](\d\d:\d\d))?/);if(date)params.startUTC=date[1]+'T'+(date[2]||'00:00')+':00Z';
+ const science=q.match(/(\d+(?:\.\d+)?)\s*[- ]?(?:minute|min)\s*(?:measurement|experiment|science|activity)/);if(science)params.scienceMinutes=+science[1];
+ const data=q.match(/(\d+(?:\.\d+)?)\s*(mb|gb)\b/);if(data)params.dataMB=+data[1]*(data[2]==='gb'?1000:1);
+ const deadline=q.match(/within\s+(\d+(?:\.\d+)?)\s*(hour|day)/);if(deadline){params.deadlineHours=+deadline[1]*(deadline[2]==='day'?24:1);if(params.deadlineHours>s.durationHours)params.durationHours=params.deadlineHours;}
+ if(Object.keys(params).length)return {action:'update',params,text:'I’ll apply those explicit changes. All other hardware settings stay fixed.'};
+ if(/solar|sunlight|harvest|energy|charging|charge|battery|power/.test(q))return reply(`This scenario generates ${m.energyKWh.toFixed(2)} kWh of gross solar energy during ${fmtHours(s.durationHours)}. That is not all stored: housekeeping, science and radio consume energy; excess charging can be spilled.\n\nThe measurement becomes energy-ready ${m.readyHour===null?'at no point in this interval':fmtHours(m.readyHour)+' after landing'}. The policy requires ${(m.requiredStartWh/1000).toFixed(3)} kWh in the battery, including reserve, to complete the activity without relying on future sunlight. Initial charge counts.\n\nMinimum battery charge: ${m.minSocPct.toFixed(1)}%. Selected reserve: ${s.reservePct}%.`);
+ if(/link|connection|communication|contact|send|transmit|radio|data/.test(q))return reply(`Selected station: ${s.stationId}. Geometric contact totals ${fmtHours(m.contactHours)}. Actual powered transmission totals ${fmtHours(m.transmissionHours)}.\n\n${m.deliveredMB.toFixed(1)} of ${s.dataMB} MB is returned. ${m.completeHour===null?'The complete file is not returned in this interval.':'The result is returned '+fmtHours(m.completeHour)+' after landing.'}\n\nContact is not a station reservation. The model assumes an adaptive radio rate, protocol efficiency and the configured antenna/link parameters.`);
+ if(/why|explain|result|fail|mission|finish|complete/.test(q))return reply(`${m.feasible?'The mission objective is met.':'The selected mission has a limitation.'} ${m.reason}\n\nMeasurement: ${m.scienceStartHour===null?'does not start':fmtHours(m.scienceStartHour)+' → '+fmtHours(m.scienceEndHour)+' after landing'}.\nData return: ${m.completeHour===null?'not completed':fmtHours(m.completeHour)+' after landing'}.\nDeadline: ${fmtHours(s.deadlineHours)}.\n\nThe measurement creates its data only after it finishes. Downlink then needs station access, a supported rate and energy above reserve.`);
+ if(/source|nasa|assumption|accuracy|real/.test(q))return {action:'sources',text:'The supplied data bundle contains LOLA terrain samples and DE421 ephemerides. The spacecraft and radio are editable assumptions; results are preliminary, not flight-certified predictions.'};
+ if(/play|replay|start animation/.test(q))return {action:'play',text:'Playing the calculated sequence. You can pause, scrub time, or select a mission milestone.'};
+ return reply('I’m the built-in guide, with a small set of supported actions rather than an open-ended AI model. Try “Explain this result”, “Show the transmission”, “Find an alternative”, “Delay by 1 day”, or “Run a 20 minute measurement, return 100 MB within 12 hours”. All settings remain directly editable.');
+}

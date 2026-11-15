@@ -10,18 +10,6 @@ View your app in AI Studio: https://ai.studio/apps/7c6d8f09-0b5d-416c-aadb-1281d
 
 ## Run Locally
 
-### Clone the project
-
-```sh
-git clone --branch luna-shift-react https://github.com/hrhoo/LunaShift.git
-cd LunaShift
-```
-
-The 3D models are included as regular Git files. Git LFS is not required.
-Keep new assets below GitHub's 100 MiB per-file limit.
-
-### Install and run
-
 **Prerequisites:**  Node.js
 
 

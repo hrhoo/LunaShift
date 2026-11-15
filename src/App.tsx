@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import FlyingButton from '@/components/ui/FlyingButton';
+import { useEffect, useRef, useState } from 'react';
+import AgentBuilderPage from '@/components/ui/AgentBuilderPage';
 import Lanyard from '@/components/ui/Lanyard';
-import LunarRoverScene from '@/components/ui/LunarRoverScene';
-import UniverseStarfield from '@/components/ui/UniverseStarfield';
+import ManualPlannerPage from '@/components/ui/ManualPlannerPage';
+import moonBgVideoUrl from './assets/moon-bg.mp4';
 
 const BADGE_LOGO_SRC = '/assets/aistudio/Luna_Shift__3__4181c459.png';
 const STRAP_LOGO_SRC = '/assets/aistudio/Luna_Shift__2__8704c0a0.png';
@@ -236,14 +236,55 @@ function createBackBadgeDataUrl(logoImg?: HTMLImageElement): string {
   return canvas.toDataURL('image/png');
 }
 
+function createOverlayLogoDataUrl(logoImg: HTMLImageElement): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  const nw = logoImg.naturalWidth || 256;
+  const nh = logoImg.naturalHeight || 256;
+  const s = Math.min(256 / nw, 256 / nh);
+  const dw = Math.round(nw * s);
+  const dh = Math.round(nh * s);
+  ctx.drawImage(logoImg, Math.round((256 - dw) / 2), Math.round((256 - dh) / 2), dw, dh);
+  return canvas.toDataURL('image/png');
+}
+
 export default function App() {
   const [frontBadge, setFrontBadge] = useState<string>(() => createFrontBadgeDataUrl());
   const [backBadge, setBackBadge] = useState<string>(() => createBackBadgeDataUrl());
   const [strapBadge, setStrapBadge] = useState<string>(() => createStrapDataUrl());
+  const [overlayLogo, setOverlayLogo] = useState<string>('');
   const [isCrossFading, setIsCrossFading] = useState(false);
   const [hideLaunchLayer, setHideLaunchLayer] = useState(false);
-  const launchTimerRef = useRef<number | null>(null);
-  const unmountTimerRef = useRef<number | null>(null);
+  const [isBuilderMounted, setIsBuilderMounted] = useState(false);
+  const [isBuilderVisible, setIsBuilderVisible] = useState(false);
+  const [isManualPlannerMounted, setIsManualPlannerMounted] = useState(false);
+  const [isManualPlannerVisible, setIsManualPlannerVisible] = useState(false);
+  const [showPlannerOverlay, setShowPlannerOverlay] = useState(false);
+  const [isPlannerAssetsLoaded, setIsPlannerAssetsLoaded] = useState(false);
+  const [isPlannerRevealComplete, setIsPlannerRevealComplete] = useState(false);
+  const builderTimerRef = useRef<number | null>(null);
+  const builderMountRafRef = useRef<number | null>(null);
+  const builderMountTimerRef = useRef<number | null>(null);
+  const overlayHideTimerRef = useRef<number | null>(null);
+  const manualPlannerRafRef = useRef<number | null>(null);
+  const manualPlannerRaf2Ref = useRef<number | null>(null);
+  const manualPlannerTimerRef = useRef<number | null>(null);
+  const isHomeBackgroundVisible = !isBuilderVisible && !isManualPlannerVisible;
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const videoEl = bgVideoRef.current;
+    if (!videoEl) return;
+    if (isHomeBackgroundVisible) {
+      videoEl.muted = true;
+      videoEl.play().catch(() => {});
+    } else {
+      videoEl.pause();
+    }
+  }, [isHomeBackgroundVisible]);
 
   useEffect(() => {
     const badgeImg = new Image();
@@ -251,6 +292,7 @@ export default function App() {
     badgeImg.onload = () => {
       setFrontBadge(createFrontBadgeDataUrl(badgeImg));
       setBackBadge(createBackBadgeDataUrl(badgeImg));
+      setOverlayLogo(createOverlayLogoDataUrl(badgeImg));
     };
     badgeImg.src = BADGE_LOGO_SRC;
 
@@ -262,51 +304,233 @@ export default function App() {
     strapImg.src = STRAP_LOGO_SRC;
 
     return () => {
-      if (launchTimerRef.current !== null) window.clearTimeout(launchTimerRef.current);
-      if (unmountTimerRef.current !== null) window.clearTimeout(unmountTimerRef.current);
+      if (builderTimerRef.current !== null) window.clearTimeout(builderTimerRef.current);
+      if (builderMountRafRef.current !== null) window.cancelAnimationFrame(builderMountRafRef.current);
+      if (builderMountTimerRef.current !== null) window.clearTimeout(builderMountTimerRef.current);
+      if (overlayHideTimerRef.current !== null) window.clearTimeout(overlayHideTimerRef.current);
+      if (manualPlannerRafRef.current !== null) window.cancelAnimationFrame(manualPlannerRafRef.current);
+      if (manualPlannerRaf2Ref.current !== null) window.cancelAnimationFrame(manualPlannerRaf2Ref.current);
+      if (manualPlannerTimerRef.current !== null) window.clearTimeout(manualPlannerTimerRef.current);
     };
   }, []);
 
-  const handleLaunchClick = () => {
-    if (launchTimerRef.current !== null || isCrossFading) return;
+  const handleEnterPlanner = () => {
+    setIsCrossFading(true);
+    setHideLaunchLayer(true);
+    handleOpenBuilder();
+  };
 
-    // After 5.5 seconds, trigger smooth cross-fade transition to the Lunar Rover page
-    launchTimerRef.current = window.setTimeout(() => {
-      setIsCrossFading(true);
-      unmountTimerRef.current = window.setTimeout(() => {
-        setHideLaunchLayer(true);
-      }, 1600);
-    }, 5500);
+  const clearManualPlannerTimers = () => {
+    if (manualPlannerRafRef.current !== null) {
+      window.cancelAnimationFrame(manualPlannerRafRef.current);
+      manualPlannerRafRef.current = null;
+    }
+    if (manualPlannerRaf2Ref.current !== null) {
+      window.cancelAnimationFrame(manualPlannerRaf2Ref.current);
+      manualPlannerRaf2Ref.current = null;
+    }
+    if (manualPlannerTimerRef.current !== null) {
+      window.clearTimeout(manualPlannerTimerRef.current);
+      manualPlannerTimerRef.current = null;
+    }
+  };
+
+  const handleOpenBuilder = () => {
+    clearManualPlannerTimers();
+    setIsManualPlannerVisible(false);
+    setIsManualPlannerMounted(false);
+    if (builderTimerRef.current !== null) {
+      window.clearTimeout(builderTimerRef.current);
+      builderTimerRef.current = null;
+    }
+    if (builderMountRafRef.current !== null) {
+      window.cancelAnimationFrame(builderMountRafRef.current);
+      builderMountRafRef.current = null;
+    }
+    if (builderMountTimerRef.current !== null) {
+      window.clearTimeout(builderMountTimerRef.current);
+      builderMountTimerRef.current = null;
+    }
+    if (overlayHideTimerRef.current !== null) {
+      window.clearTimeout(overlayHideTimerRef.current);
+      overlayHideTimerRef.current = null;
+    }
+    setShowPlannerOverlay(true);
+    setIsPlannerAssetsLoaded(false);
+    setIsPlannerRevealComplete(false);
+    // Let the browser paint the fullscreen black Luna Shift overlay before mounting the 3D Planner
+    builderMountRafRef.current = window.requestAnimationFrame(() => {
+      builderMountRafRef.current = null;
+      builderMountTimerRef.current = window.setTimeout(() => {
+        builderMountTimerRef.current = null;
+        setIsBuilderMounted(true);
+        setIsBuilderVisible(true);
+      }, 0);
+    });
+  };
+
+  const handlePlannerAssetsLoaded = () => {
+    setIsPlannerAssetsLoaded(true);
+    if (overlayHideTimerRef.current !== null) {
+      window.clearTimeout(overlayHideTimerRef.current);
+    }
+    overlayHideTimerRef.current = window.setTimeout(() => {
+      setShowPlannerOverlay(false);
+      setIsPlannerRevealComplete(true);
+      overlayHideTimerRef.current = null;
+    }, 360);
+  };
+
+  const handleCloseBuilder = () => {
+    clearManualPlannerTimers();
+    if (builderMountRafRef.current !== null) {
+      window.cancelAnimationFrame(builderMountRafRef.current);
+      builderMountRafRef.current = null;
+    }
+    if (builderMountTimerRef.current !== null) {
+      window.clearTimeout(builderMountTimerRef.current);
+      builderMountTimerRef.current = null;
+    }
+    if (overlayHideTimerRef.current !== null) {
+      window.clearTimeout(overlayHideTimerRef.current);
+      overlayHideTimerRef.current = null;
+    }
+    setShowPlannerOverlay(false);
+    setIsPlannerAssetsLoaded(false);
+    setIsPlannerRevealComplete(false);
+    setIsManualPlannerVisible(false);
+    setIsBuilderVisible(false);
+    setIsCrossFading(false);
+    setHideLaunchLayer(false);
+    if (builderTimerRef.current !== null) window.clearTimeout(builderTimerRef.current);
+    builderTimerRef.current = window.setTimeout(() => {
+      setIsManualPlannerMounted(false);
+      setIsBuilderMounted(false);
+      builderTimerRef.current = null;
+    }, 520);
+  };
+
+  const handleOpenManualPlanner = () => {
+    clearManualPlannerTimers();
+    setIsManualPlannerMounted(true);
+    setIsManualPlannerVisible(false);
+    // Wait two frames so opacity-0 is painted before starting the 500ms crossfade.
+    manualPlannerRafRef.current = window.requestAnimationFrame(() => {
+      manualPlannerRafRef.current = null;
+      manualPlannerRaf2Ref.current = window.requestAnimationFrame(() => {
+        manualPlannerRaf2Ref.current = null;
+        setIsManualPlannerVisible(true);
+      });
+    });
+  };
+
+  const handleCloseManualPlanner = () => {
+    clearManualPlannerTimers();
+    setIsManualPlannerVisible(false);
+    manualPlannerTimerRef.current = window.setTimeout(() => {
+      setIsManualPlannerMounted(false);
+      manualPlannerTimerRef.current = null;
+    }, 520);
+  };
+
+  const handleWatchOverviewFromManualPlanner = () => {
+    handleCloseBuilder();
   };
 
   return (
     <main className="relative min-h-screen w-full bg-[#010103] flex items-center justify-center overflow-hidden">
-      {/* New Page: Unreal Engine 5 Lunar Rover Mission Scene (Cross-fades in at 5.5s) */}
+      {/* Home Page Background: Local Looping Moon Video (native, no player UI) */}
       <div
-        className={`fixed inset-0 w-full h-full z-30 transition-opacity duration-[1500ms] ease-in-out ${
-          isCrossFading ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        className={`fixed inset-0 w-full h-full z-20 pointer-events-none transition-opacity duration-500 ease-in-out ${
+          isHomeBackgroundVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <LunarRoverScene active={isCrossFading} />
+        <video
+          ref={bgVideoRef}
+          src={moonBgVideoUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
+          tabIndex={-1}
+          aria-hidden="true"
+          className="w-full h-full object-cover object-center select-none pointer-events-none"
+        />
       </div>
 
-      {/* Initial Launch Page Layer (Cross-fades out smoothly at 5.5s) */}
+      {/* Mission Planner + Embedded Surface View Window (Opens behind the preload overlay on pen click) */}
+      {isBuilderMounted && (
+        <div
+          className={`fixed inset-0 w-full h-full z-40 ${showPlannerOverlay ? '' : 'transition-opacity duration-500 ease-in-out'
+            } ${isBuilderVisible && !isManualPlannerVisible
+              ? 'opacity-100 pointer-events-auto'
+              : 'opacity-0 pointer-events-none'
+            }`}
+        >
+          <AgentBuilderPage
+            sceneActive={isBuilderVisible && !isManualPlannerVisible}
+            isRevealComplete={isPlannerRevealComplete}
+            onAssetsLoaded={handlePlannerAssetsLoaded}
+            onOpenManualPlanner={handleOpenManualPlanner}
+            onClose={handleCloseBuilder}
+          />
+        </div>
+      )}
+
+      {/* Manual Surface Mission Planner Page (Cross-fades in when manual icon is clicked) */}
+      {isManualPlannerMounted && (
+        <div
+          className={`fixed inset-0 w-full h-full z-50 transition-opacity duration-500 ease-in-out ${isManualPlannerVisible
+              ? 'opacity-100 pointer-events-auto'
+              : 'opacity-0 pointer-events-none'
+            }`}
+        >
+          <ManualPlannerPage
+            active={isManualPlannerVisible}
+            onBack={handleCloseManualPlanner}
+            onWatchOverview={handleWatchOverviewFromManualPlanner}
+          />
+        </div>
+      )}
+
+      {/* Fullscreen Black Preload Overlay — covers background & mounts AI Planner instantaneously */}
+      {showPlannerOverlay && (
+        <div
+          aria-busy="true"
+          aria-label="Loading Mission Planner"
+          className={`fixed inset-0 z-[100000000] bg-black flex flex-col items-center justify-center gap-6 transition-opacity duration-[350ms] ease-out ${isPlannerAssetsLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+            }`}
+        >
+          <div className="relative flex items-center justify-center w-36 h-36">
+            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+            <div className="absolute inset-0 rounded-full luna-tricolor-ring animate-spin" />
+            <div className="relative z-10 w-24 h-24 rounded-full overflow-hidden flex items-center justify-center">
+              <img
+                src={overlayLogo || BADGE_LOGO_SRC}
+                alt="LunaShift Logo"
+                decoding="sync"
+                loading="eager"
+                className="w-full h-full object-contain scale-[1.08]"
+              />
+            </div>
+          </div>
+          <div className="text-[12.65px] font-mono tracking-[0.26em] uppercase">
+            <span className="planner-silver-shimmer">Loading Mission Planner</span>
+          </div>
+        </div>
+      )}
+
+      {/* Initial Home Page Layer */}
       {!hideLaunchLayer && (
         <>
-          {/* Deep-Space Universe Starfield Backdrop matching the Lunar Rover Sky */}
+          {/* 3D Interactive Lanyard Badge (Right-hand side) */}
           <div
-            className={`fixed inset-0 w-full h-full pointer-events-none z-20 transition-opacity duration-[1500ms] ease-in-out ${
-              isCrossFading ? 'opacity-0' : 'opacity-100'
-            }`}
-          >
-            <UniverseStarfield />
-          </div>
-
-          {/* 3D Interactive Lanyard Badge (Behind Launch Button) */}
-          <div
-            className={`fixed inset-0 w-full h-full pointer-events-none z-40 transition-opacity duration-[1500ms] ease-in-out ${
-              isCrossFading ? 'opacity-0' : 'opacity-100'
-            }`}
+            className={`fixed inset-0 w-full h-full pointer-events-none z-40 transition-opacity duration-500 ease-in-out ${isCrossFading ? 'opacity-0' : 'opacity-100'
+              }`}
           >
             <Lanyard
               frontImage={frontBadge}
@@ -316,50 +540,70 @@ export default function App() {
               strapColor="#0B3D91"
               finish="holographic"
               metal="silver"
-              anchor="center"
+              anchor="right"
               size={0.51}
               strapLength={0.40}
             />
           </div>
 
-          {/* Launch Button (Always in front of the Badge) */}
+          {/* Mission Entry Panel (shifted 10.5% rightward from left edge: +20% - 7% - 4% + 1.5%) */}
           <div
-            className={`fixed bottom-0 left-0 right-0 w-full z-[99999999] h-[240px] flex items-end justify-center pointer-events-none transition-opacity duration-[1500ms] ease-in-out ${
-              isCrossFading ? 'opacity-0' : 'opacity-100'
-            }`}
+            data-no-lanyard
+            data-hud-interactive
+            className={`fixed left-[min(calc(1.25rem+10.5vw),max(1.25rem,calc(100vw-340px-1.25rem)))] sm:left-[min(calc(2rem+10.5vw),calc(100vw-340px-2rem))] top-1/2 -translate-y-1/2 z-50 w-[min(340px,calc(100vw-2.5rem))] pointer-events-auto transition-opacity duration-500 ease-in-out ${isCrossFading ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
           >
-            <FlyingButton
-              theme="dark"
-              size="medium"
-              altitude={150}
-              hoverTime={2.4}
-              jets={3}
-              thrusters
-              trigger="click"
-              carryCursor={false}
-              smoke={1}
-              turbulence={1}
-              wobble={1}
-              thrustColor="#ff002a"
-              smokeColor="#f4f4f5"
-              buttonColor="linear-gradient(135deg, #FFFFFF 0%, #ff002a 100%)"
-              textColor="#000000"
-              style={{ '--fly-width': 'min(calc(100% - 2rem), 384px)' } as CSSProperties}
-              onClick={handleLaunchClick}
-            >
-              Enter Experience
-            </FlyingButton>
-          </div>
-          {/* Top-Right Frosted Glass Mission Summary Box */}
-          <div
-            className={`fixed top-5 right-5 sm:top-8 sm:right-8 z-50 max-w-[290px] pointer-events-none transition-opacity duration-[1500ms] ease-in-out ${
-              isCrossFading ? 'opacity-0' : 'opacity-100'
-            }`}
-          >
-            <div className="rounded-2xl border border-white/20 bg-white/[0.06] backdrop-blur-[2px] px-4 py-3.5 shadow-[0_18px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]">
-              <p className="text-center font-['Inter',sans-serif] text-[12.5px] leading-relaxed font-medium text-white/90 tracking-tight">
+            <div className="mission-entry-panel max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[34px] px-7 pt-12 pb-10 text-white">
+              <h1
+                className="mx-auto max-w-[270px] text-center text-[32px] sm:text-[34px] font-medium leading-[1.08] tracking-[-0.025em] text-white"
+                style={{ fontFamily: "'Newsreader', Georgia, serif" }}
+              >
+                LunaShift Mission Planner
+              </h1>
+
+              <p className="mt-7 text-center font-['Inter',sans-serif] text-[14.5px] leading-[1.52] font-normal text-white/[0.88] tracking-[-0.005em]">
                 Compare locations and landing dates through sunlight, stored energy and a clear line of sight to Earth.
               </p>
+
+              <div className="my-8 h-px w-full bg-white/[0.14]" />
+
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-['JetBrains_Mono',monospace] text-[11px] font-medium uppercase tracking-[0.08em] text-white/[0.56]">
+                    TIME
+                  </span>
+                  <span className="font-['Inter',sans-serif] text-[13.5px] font-medium text-white/[0.94] tabular-nums">
+                    48 hours
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-['JetBrains_Mono',monospace] text-[11px] font-medium uppercase tracking-[0.08em] text-white/[0.56]">
+                    DIFFICULTY
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-[5px]" aria-hidden="true">
+                      <span className="h-[7px] w-[15px] rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.28)]" />
+                      <span className="h-[7px] w-[15px] rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.28)]" />
+                      <span className="h-[7px] w-[15px] rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.28)]" />
+                      <span className="h-[7px] w-[15px] rounded-full bg-white/[0.22]" />
+                    </div>
+                    <span className="font-['Inter',sans-serif] text-[13.5px] font-medium text-white/[0.94]">
+                      Intermediate
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleEnterPlanner}
+                className="mission-enter-btn mt-10 flex h-12 w-full cursor-pointer items-center justify-center rounded-full"
+              >
+                <span className="mission-enter-btn-label relative z-[1] font-['Inter',sans-serif] text-[15px] font-semibold tracking-[-0.01em] text-[#111216]">
+                  Enter
+                </span>
+              </button>
             </div>
           </div>
         </>

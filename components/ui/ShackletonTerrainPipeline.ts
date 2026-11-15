@@ -8,16 +8,16 @@ export const LUNAR_GRAVITY = 1.622;     // Lunar surface gravity (m/s²)
 export const PLAYABLE_SIZE_M = 3000.0;  // 3 km x 3 km playable region (-1500m .. +1500m)
 export const GRID_SEGMENTS = 320;       // 321 x 321 vertex grid (~9.3m spacing)
 
-// Locked Rover Surface Spawn Location & Framing (Connecting Ridge flat plain facing NNE between Earth & Sun)
-export const ROVER_SPAWN_X = 485.0;
-export const ROVER_SPAWN_Z = 169.0;
-export const ROVER_SPAWN_HEADING = -0.38; // ~+21.8° NNE
-export const ROVER_SPAWN_ORBIT_YAW = 0.05;
-export const ROVER_SPAWN_ORBIT_PITCH = 0.16;
-export const ROVER_SPAWN_ORBIT_DIST = 5.8;
-export const ROVER_INTRO_ORBIT_YAW = 0.68;
-export const ROVER_INTRO_ORBIT_PITCH = 0.28;
-export const ROVER_INTRO_ORBIT_DIST = 4.25;
+// Locked Lunar Lander Touchdown Site & Framing (Flat pad right beside CoreHab facing Earth & Sun bisector)
+export const ROVER_SPAWN_X = 507.0;
+export const ROVER_SPAWN_Z = 56.0;
+export const ROVER_SPAWN_HEADING = -0.41; // ~+23.5° NNE facing directly between Earth (-Z) & Sun (NE)
+export const ROVER_SPAWN_ORBIT_YAW = 0.01;
+export const ROVER_SPAWN_ORBIT_PITCH = 0.13;
+export const ROVER_SPAWN_ORBIT_DIST = 25.0;
+export const ROVER_INTRO_ORBIT_YAW = 0.01;
+export const ROVER_INTRO_ORBIT_PITCH = 0.13;
+export const ROVER_INTRO_ORBIT_DIST = 28.0;
 
 // CoreHab Lunar Surface Habitat Placement (Open plain in green-marked valley NNE ahead of overlook)
 export const COREHAB_POS_X = 492.0;
@@ -149,6 +149,17 @@ export function localEnuToLunarLatLon(x: number, z: number): { latDeg: number; l
  * - Culls & streams ONLY the tiles intersecting the 3 km x 3 km Shackleton region
  * - Bakes real LRO 3D Tile elevation and broad regional LRO imagery color into the local mesh & collision grid
  */
+interface CachedTerrainGrid {
+  heights: Float32Array;
+  regionalAlbedo: Float32Array;
+  looseMap: Float32Array;
+  cesiumTileStatus: string;
+  streamedTileCount: number;
+}
+
+let cachedBaseDemGrid: CachedTerrainGrid | null = null;
+let cachedCesiumBakedGrid: CachedTerrainGrid | null = null;
+
 export class ShackletonTerrainPipeline {
   public readonly sizeM = PLAYABLE_SIZE_M;
   public readonly segments = GRID_SEGMENTS;
@@ -197,7 +208,26 @@ export class ShackletonTerrainPipeline {
     this.heights = new Float32Array(count);
     this.regionalAlbedo = new Float32Array(count * 3);
     this.looseMap = new Float32Array(count);
-    this.buildLroShackletonDemGrid();
+    if (cachedCesiumBakedGrid) {
+      this.heights.set(cachedCesiumBakedGrid.heights);
+      this.regionalAlbedo.set(cachedCesiumBakedGrid.regionalAlbedo);
+      this.looseMap.set(cachedCesiumBakedGrid.looseMap);
+      this.cesiumTileStatus = cachedCesiumBakedGrid.cesiumTileStatus;
+      this.streamedTileCount = cachedCesiumBakedGrid.streamedTileCount;
+    } else if (cachedBaseDemGrid) {
+      this.heights.set(cachedBaseDemGrid.heights);
+      this.regionalAlbedo.set(cachedBaseDemGrid.regionalAlbedo);
+      this.looseMap.set(cachedBaseDemGrid.looseMap);
+    } else {
+      this.buildLroShackletonDemGrid();
+      cachedBaseDemGrid = {
+        heights: new Float32Array(this.heights),
+        regionalAlbedo: new Float32Array(this.regionalAlbedo),
+        looseMap: new Float32Array(this.looseMap),
+        cesiumTileStatus: this.cesiumTileStatus,
+        streamedTileCount: 0,
+      };
+    }
     this.initWaypoints();
   }
 
@@ -207,6 +237,10 @@ export class ShackletonTerrainPipeline {
    * 3 km x 3 km terrain mesh and collision heightfield.
    */
   public async tryStreamCesiumMoonTiles(onBaked?: () => void): Promise<void> {
+    if (cachedCesiumBakedGrid) {
+      return;
+    }
+
     const env = (import.meta as unknown as { env?: Record<string, string> }).env;
     const token = env?.VITE_CESIUM_ION_TOKEN;
     const assetId = env?.VITE_CESIUM_MOON_ASSET_ID || '2684829';
@@ -351,6 +385,13 @@ export class ShackletonTerrainPipeline {
       if (bakedSamples.length > 0) {
         this.bakeCesiumSamplesIntoGrid(bakedSamples);
         this.cesiumTileStatus = `CESIUM MOON 3D TILES (ASSET ${assetId} // ${this.streamedTileCount} TILES BAKED)`;
+        cachedCesiumBakedGrid = {
+          heights: new Float32Array(this.heights),
+          regionalAlbedo: new Float32Array(this.regionalAlbedo),
+          looseMap: new Float32Array(this.looseMap),
+          cesiumTileStatus: this.cesiumTileStatus,
+          streamedTileCount: this.streamedTileCount,
+        };
         onBaked?.();
       } else {
         this.cesiumTileStatus = `CESIUM MOON 3D TILES (ASSET ${assetId} STREAM ACTIVE)`;
@@ -521,17 +562,17 @@ export class ShackletonTerrainPipeline {
         const x = -half + ix * step;
         const idx = iz * this.stride + ix;
 
-        // Inverse-distance weight from streamed Cesium Moon vertices
+        // Smooth inverse-distance weight from streamed Cesium Moon vertices (60m softening avoids pinpoint spikes)
         let wSum = 0;
         let hSum = 0;
         let rSum = 0;
         let gSum = 0;
         let bSum = 0;
 
-        const strideStep = Math.max(1, Math.floor(samples.length / 80));
+        const strideStep = Math.max(1, Math.floor(samples.length / 160));
         for (let s = 0; s < samples.length; s += strideStep) {
           const smp = samples[s];
-          const dSq = (x - smp.x) * (x - smp.x) + (z - smp.z) * (z - smp.z) + 400.0;
+          const dSq = (x - smp.x) * (x - smp.x) + (z - smp.z) * (z - smp.z) + 3600.0;
           const w = 1.0 / dSq;
           wSum += w;
           hSum += (smp.h - meanH) * w;
@@ -541,9 +582,16 @@ export class ShackletonTerrainPipeline {
         }
 
         if (wSum > 0) {
-          const tileMacroH = (hSum / wSum) * 0.25;
-          // Preserve a completely flat 95m landing plateau around (0,0), smoothly blending by 185m
-          const apronWeight = THREE.MathUtils.smoothstep(Math.hypot(x, z), 95.0, 185.0);
+          // Bound macro contribution so modulo-tiled crater walls never inject towering vertical cones
+          const tileMacroH = THREE.MathUtils.clamp((hSum / wSum) * 0.14, -24.0, 14.0);
+          // Preserve flat plateau around (0,0) and around the CoreHab/Lander landing pad
+          const originApron = THREE.MathUtils.smoothstep(Math.hypot(x, z), 95.0, 185.0);
+          const padApron = THREE.MathUtils.smoothstep(
+            Math.hypot(x - 500.0, z - 52.0),
+            65.0,
+            195.0
+          );
+          const apronWeight = originApron * padApron;
           this.heights[idx] += tileMacroH * apronWeight;
 
           this.regionalAlbedo[idx * 3 + 0] = rSum / wSum;
@@ -552,6 +600,9 @@ export class ShackletonTerrainPipeline {
         }
       }
     }
+
+    // Clear tall peaks in the northern panorama behind CoreHab & Lander AFTER Cesium tile baking
+    this.applyNorthernSightlineClearance();
 
     // Smoothly level a flat 24m-68m landing pad around the locked rover spawn + 11.5m-24m pad for CoreHab
     this.applyLandingPadLeveling();
@@ -623,12 +674,6 @@ export class ShackletonTerrainPipeline {
     const apronBlend = THREE.MathUtils.smoothstep(startDist, 95.0, 185.0);
     macroRelief = (macroRelief + ridgeSpine) * apronBlend;
 
-    // Keep northern sightline (-Z corridor toward Earth) flat and free of foreground ridges so Earth sits unobstructed
-    if (z < 0 && macroRelief > 0) {
-      const corridorFactor = 1.0 - 0.88 * Math.exp(-Math.pow(x / 220.0, 2.0));
-      macroRelief *= corridorFactor;
-    }
-
     let craterDelta = 0;
     for (let i = 0; i < SHACKLETON_REGIONAL_CRATERS.length; i++) {
       const c = SHACKLETON_REGIONAL_CRATERS[i];
@@ -658,6 +703,43 @@ export class ShackletonTerrainPipeline {
     };
   }
 
+  private applyNorthernSightlineClearance(): void {
+    const half = this.sizeM * 0.5;
+    const step = this.sizeM / this.segments;
+    const padH = this.sampleHeight(COREHAB_POS_X, COREHAB_POS_Z);
+
+    for (let iz = 0; iz <= this.segments; iz++) {
+      const z = -half + iz * step;
+      for (let ix = 0; ix <= this.segments; ix++) {
+        const x = -half + ix * step;
+        const idx = iz * this.stride + ix;
+        const h = this.heights[idx];
+
+        // Clear the entire northern panorama behind CoreHab & Lander (Earth -Z, center horizon, and Sun +X/-Z)
+        const dz = z - 54.0;
+        const northAdvance = Math.max(0, -dz);
+        const northMask = THREE.MathUtils.smoothstep(-dz, -35.0, 75.0);
+        const sightlineHalfW = 480.0 + northAdvance * 1.4;
+        const sightlineLat = (x - 500.0) / sightlineHalfW;
+        const sightlineMask = northMask * Math.exp(-Math.pow(sightlineLat, 4.0));
+
+        if (h > padH) {
+          let excess = h - padH;
+          if (sightlineMask > 0.001) {
+            const keepRatio = 1.0 - 0.94 * sightlineMask;
+            excess *= keepRatio;
+          }
+          // Softly cap residual horizon relief so no steep mountain peak ever blocks the sky
+          const maxCap = THREE.MathUtils.lerp(24.0, 4.5, sightlineMask);
+          if (excess > maxCap) {
+            excess = maxCap + Math.tanh((excess - maxCap) / 12.0) * 2.5;
+          }
+          this.heights[idx] = padH + excess;
+        }
+      }
+    }
+  }
+
   private buildLroShackletonDemGrid(): void {
     const half = this.sizeM * 0.5;
     const step = this.sizeM / this.segments;
@@ -679,6 +761,7 @@ export class ShackletonTerrainPipeline {
       }
     }
 
+    this.applyNorthernSightlineClearance();
     this.applyLandingPadLeveling();
 
     const originH = this.sampleHeight(0, 0);
@@ -690,8 +773,8 @@ export class ShackletonTerrainPipeline {
   private applyLandingPadLeveling(): void {
     const half = this.sizeM * 0.5;
     const step = this.sizeM / this.segments;
-    const spawnPadH = this.sampleHeight(ROVER_SPAWN_X, ROVER_SPAWN_Z);
-    const coreHabPadH = this.sampleHeight(COREHAB_POS_X, COREHAB_POS_Z);
+    // Share a unified leveled pad elevation across CoreHab and the adjacent Lunar Lander touchdown zone
+    const sharedPadH = this.sampleHeight(COREHAB_POS_X, COREHAB_POS_Z);
 
     for (let iz = 0; iz <= this.segments; iz++) {
       const z = -half + iz * step;
@@ -700,16 +783,16 @@ export class ShackletonTerrainPipeline {
         const idx = iz * this.stride + ix;
 
         const dSpawn = Math.hypot(x - ROVER_SPAWN_X, z - ROVER_SPAWN_Z);
-        if (dSpawn < 68.0) {
-          const blend = THREE.MathUtils.smoothstep(dSpawn, 24.0, 68.0);
-          this.heights[idx] = THREE.MathUtils.lerp(spawnPadH, this.heights[idx], blend);
+        if (dSpawn < 54.0) {
+          const blend = THREE.MathUtils.smoothstep(dSpawn, 20.0, 54.0);
+          this.heights[idx] = THREE.MathUtils.lerp(sharedPadH, this.heights[idx], blend);
           this.looseMap[idx] = THREE.MathUtils.lerp(0.12, this.looseMap[idx], blend);
         }
 
         const dCoreHab = Math.hypot(x - COREHAB_POS_X, z - COREHAB_POS_Z);
-        if (dCoreHab < 24.0) {
-          const blend = THREE.MathUtils.smoothstep(dCoreHab, 11.5, 24.0);
-          this.heights[idx] = THREE.MathUtils.lerp(coreHabPadH, this.heights[idx], blend);
+        if (dCoreHab < 32.0) {
+          const blend = THREE.MathUtils.smoothstep(dCoreHab, 14.0, 32.0);
+          this.heights[idx] = THREE.MathUtils.lerp(sharedPadH, this.heights[idx], blend);
           this.looseMap[idx] = THREE.MathUtils.lerp(0.14, this.looseMap[idx], blend);
         }
       }
@@ -1286,8 +1369,8 @@ export class ShackletonTerrainPipeline {
         Math.hypot(x - ROVER_SPAWN_X, z - ROVER_SPAWN_Z) < 16.0 ||
         Math.hypot(x - COREHAB_POS_X, z - COREHAB_POS_Z) < 14.0
       ) {
-        x = ROVER_SPAWN_X + 18.0;
-        z = ROVER_SPAWN_Z + 18.0;
+        x = ROVER_SPAWN_X + 24.0;
+        z = ROVER_SPAWN_Z + 24.0;
       }
       if (Math.abs(x) > this.sizeM * 0.47 || Math.abs(z) > this.sizeM * 0.47) continue;
 
