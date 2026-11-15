@@ -65,6 +65,7 @@ import {
   Tick02Icon,
 } from '@hugeicons/core-free-icons';
 import LunarRoverScene from './LunarRoverScene';
+import LunaMascot from './LunaMascot';
 import PlannerHudOverlay from './PlannerHudOverlay';
 import DecryptedText from './DecryptedText';
 import IconSlidersVertical from './IconSlidersVertical';
@@ -3975,10 +3976,11 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenManualPlanner?.()}
-                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors cursor-pointer"
-                aria-label="manual"
-                title="manual"
+                className="h-7 px-2 flex items-center gap-1.5 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Open Planner tab"
+                title="Planner"
               >
+                <span className="text-xs">Planner</span>
                 <IconSlidersVertical size="20px" />
               </button>
 
@@ -4026,6 +4028,13 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
             style={{ backgroundColor: '#141414' }}
           >
             <div className="w-[100vw] lg:w-[381px] xl:w-[418px] flex flex-col h-full shrink-0">
+              <div className="flex shrink-0 items-center gap-3 px-5 pt-3 pb-2 border-b border-white/5">
+                <LunaMascot draft={isCustomEditing ? customOptionText : inputText} active={sceneActive && isChatOpen} />
+                <div>
+                  <h2 className="text-sm font-medium text-neutral-100">Luna</h2>
+                  <p className="text-[11px] text-neutral-400">Your mission planner guide</p>
+                </div>
+              </div>
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 chat-scrollbar-hidden">
 
                 {/* Conversation Messages */}

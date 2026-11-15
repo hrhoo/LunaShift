@@ -1,0 +1,24 @@
+.luna-chat-mascot { position: relative; display: block; flex-shrink: 0; width: 60px; height: 76px; overflow: hidden; pointer-events: none; }
+.luna-chat-mascot > span { position: absolute; inset: 0; overflow: hidden; }
+.luna-chat-mascot img { display: block; max-width: none; height: 100%; object-fit: fill; }
+.luna-chat-idle img { width: 200%; animation: luna-chat-blink 3.6s steps(1, end) infinite; }
+.luna-chat-bongo { display: none; }
+.luna-chat-bongo img { width: 400%; }
+.luna-chat-mascot-typing .luna-chat-idle { display: none; }
+.luna-chat-mascot-typing .luna-chat-bongo { display: block; }
+.luna-chat-mascot-typing .luna-chat-bongo img { animation: luna-chat-tap .32s steps(1, end) 1 both; }
+@keyframes luna-chat-blink {
+  0%, 18%, 26%, 32%, 40%, 100% { transform: translateX(0); }
+  20%, 24%, 34%, 38% { transform: translateX(-50%); }
+}
+@keyframes luna-chat-tap {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-25%); }
+  50% { transform: translateX(-50%); }
+  75%, 100% { transform: translateX(-75%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .luna-chat-mascot img { animation: none !important; transform: none; }
+  .luna-chat-mascot-typing .luna-chat-idle { display: block; }
+  .luna-chat-mascot-typing .luna-chat-bongo { display: none; }
+}

@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useRef } from 'react';
 import '../manual-planner/manual-planner.css';
+import '../manual-planner/planner-theme.css';
 import { hydrate, icon } from '../manual-planner/icons.js';
 import { DEFAULTS, evaluate, latestStart, distanceKm, sampleAt, normalize } from '../manual-planner/core/rehearsal.js';
 import { MissionScene } from '../manual-planner/scene.js';
@@ -360,6 +361,13 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
               <span id="timeReadout">T + 0h</span>
             </div>
             <div className="timeline-plot">
+              <div className="timeline-legend" aria-label="Timeline legend">
+                <span><i style={{ background: '#b88900' }} />Solar power</span>
+                <span><i className="charge-key" />Battery charge</span>
+                <span><i style={{ background: '#1e40af' }} />Measurement</span>
+                <span><i style={{ background: '#115e59' }} />Earth visible</span>
+                <span><i style={{ background: '#a78bfa' }} />Transmitting</span>
+              </div>
               <canvas id="timelineCanvas" aria-label="Mission timeline showing sunlight, battery, measurement, contact, and actual transmission" />
             </div>
             <div className="timeline-bottom">
