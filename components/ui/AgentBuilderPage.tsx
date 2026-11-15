@@ -4028,8 +4028,8 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
             style={{ backgroundColor: '#141414' }}
           >
             <div className="w-[100vw] lg:w-[381px] xl:w-[418px] flex flex-col h-full shrink-0">
-              <div className="flex shrink-0 items-center gap-3 px-5 pt-3 pb-2 border-b border-white/5">
-                <LunaMascot draft={isCustomEditing ? customOptionText : inputText} active={sceneActive && isChatOpen} />
+              <div className="flex shrink-0 flex-col items-center gap-1 px-5 py-3 text-center border-b border-white/5">
+                <LunaMascot responding={isLoading || missionStore.busy} active={sceneActive && isChatOpen} />
                 <div>
                   <h2 className="text-sm font-medium text-neutral-100">Luna</h2>
                   <p className="text-[11px] text-neutral-400">Your mission planner guide</p>

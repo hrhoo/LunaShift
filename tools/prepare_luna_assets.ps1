@@ -15,43 +15,44 @@ public static class LunaAssets {
     for (int frame = 0; frame < files.Length; frame++) {
      using (var source = new Bitmap(files[frame]))
      using (var crop = source.Clone(new Rectangle(360, 380, w, h), PixelFormat.Format32bppArgb)) {
-      // The chin is open between the paws, so a flood fill would erase the
-      // face. Use each row's outer ink bounds, splitting ears and paws.
-      for (int y = 0; y < h; y++) {
-       int segments = y < 138 || y >= 320 ? 2 : 1;
-       for (int segment = 0; segment < segments; segment++) {
-        int start = segment * w / segments, end = (segment + 1) * w / segments;
-        int left = end, right = start - 1;
-        for (int x = start; x < end; x++) {
-         var color = crop.GetPixel(x, y);
-         if (color.R < 100 && color.G < 100 && color.B < 100) { left = Math.Min(left, x); right = Math.Max(right, x); }
-        }
-        for (int x = start; x < end; x++) {
-         if (right < left) { crop.SetPixel(x, y, Color.Transparent); continue; }
-         if (x <= left + 1 || x >= right - 1) {
-          // The source outline was antialiased against opaque white. Convert
-          // that outer matte into black with coverage alpha, instead of keeping
-          // pale opaque edge pixels that form a halo on dark backgrounds.
-          var edge = crop.GetPixel(x, y);
-          int coverage = 255 - Math.Min(edge.R, Math.Min(edge.G, edge.B));
-          crop.SetPixel(x, y, Color.FromArgb(coverage, 0, 0, 0));
-         }
+      // Remove only near-white pixels connected to the canvas border. Unlike
+      // fixed row/ear splits, this follows the actual crown and preserves ink.
+      var exterior = new bool[w * h];
+      var queue = new Queue<int>();
+      for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+       if (x != 0 && y != 0 && x != w - 1 && y != h - 1) continue;
+       var pixel = crop.GetPixel(x, y);
+       if (pixel.A == 0 || (pixel.R >= 245 && pixel.G >= 245 && pixel.B >= 245)) {
+        int index = y * w + x;
+        exterior[index] = true; queue.Enqueue(index);
+       }
+      }
+      while (queue.Count > 0) {
+       int index = queue.Dequeue(), x = index % w, y = index / w;
+       int[] neighbours = { x > 0 ? index - 1 : -1, x + 1 < w ? index + 1 : -1,
+        y > 0 ? index - w : -1, y + 1 < h ? index + w : -1 };
+       foreach (int next in neighbours) {
+        if (next < 0 || exterior[next]) continue;
+        var pixel = crop.GetPixel(next % w, next / w);
+        if (pixel.A == 0 || (pixel.R >= 245 && pixel.G >= 245 && pixel.B >= 245)) {
+         exterior[next] = true; queue.Enqueue(next);
         }
        }
       }
-      // Row bounds miss pale pixels on horizontal/diagonal contours, especially
-      // the crown between the ears. Decontaminate the full two-pixel perimeter
-      // from a snapshot so the operation cannot flood into the white face.
+      for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+       if (exterior[y * w + x]) crop.SetPixel(x, y, Color.Transparent);
+      // Remove the white antialias matte at the transparent perimeter, keeping
+      // the original black outline smooth on the dark chat background.
       using (var outline = (Bitmap)crop.Clone()) {
        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
         var pixel = outline.GetPixel(x, y);
         if (pixel.A == 0 || (pixel.R == 0 && pixel.G == 0 && pixel.B == 0)) continue;
-        bool exterior = false;
-        for (int dy = -2; dy <= 2 && !exterior; dy++) for (int dx = -2; dx <= 2; dx++) {
+        bool touchesExterior = false;
+        for (int dy = -2; dy <= 2 && !touchesExterior; dy++) for (int dx = -2; dx <= 2; dx++) {
          int nx = x + dx, ny = y + dy;
-         if (nx < 0 || nx >= w || ny < 0 || ny >= h || outline.GetPixel(nx, ny).A == 0) { exterior = true; break; }
+         if (nx < 0 || nx >= w || ny < 0 || ny >= h || outline.GetPixel(nx, ny).A == 0) { touchesExterior = true; break; }
         }
-        if (exterior) {
+        if (touchesExterior) {
          int coverage = (255 - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B))) * pixel.A / 255;
          crop.SetPixel(x, y, Color.FromArgb(coverage, 0, 0, 0));
         }
