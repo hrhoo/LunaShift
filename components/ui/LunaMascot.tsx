@@ -30,8 +30,8 @@ export default function LunaMascot({ draft, active = true }: { draft: string; ac
 
   return (
     <span className={`luna-chat-mascot${typing ? ' luna-chat-mascot-typing' : ''}`} aria-hidden="true">
-      <span className="luna-chat-idle"><img src="/assets/luna/idle.png" alt="" draggable={false} width={600} height={380} /></span>
-      <span className="luna-chat-bongo"><img src="/assets/luna/bongo.png" alt="" draggable={false} width={1200} height={380} /></span>
+      <span className="luna-chat-idle"><img src="/assets/luna/idle.png" alt="" draggable={false} width={680} height={400} /></span>
+      <span className="luna-chat-bongo"><img src="/assets/luna/bongo.png" alt="" draggable={false} width={1360} height={400} /></span>
     </span>
   );
 }
