@@ -1,0 +1,76 @@
+.manual-planner-shell .energy-map {
+  margin: 24px 0; border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink); overflow: hidden;
+}
+.manual-planner-shell .energy-map > summary {
+  display: flex; align-items: center; gap: 12px; padding: 24px 28px;
+  cursor: pointer; font-size: 20px; font-weight: 600; list-style: none;
+}
+.manual-planner-shell .energy-map > summary::-webkit-details-marker { display: none; }
+.manual-planner-shell .energy-map > summary > [data-icon="sun"] { color: var(--gold); }
+.manual-planner-shell .energy-map > summary small { font-size: 13px; font-weight: 400; color: var(--muted); }
+.manual-planner-shell .energy-map-chevron { margin-left: auto; transition: transform .16s; }
+.manual-planner-shell .energy-map[open] .energy-map-chevron { transform: rotate(180deg); }
+.manual-planner-shell .energy-map-inner { padding: 0 28px 24px; }
+.manual-planner-shell .energy-map-context { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 24px; }
+.manual-planner-shell .energy-map-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.manual-planner-shell .energy-map-toolbar label { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
+.manual-planner-shell .energy-map-toolbar select {
+  min-height: 44px; min-width: 120px; max-width: 100%; padding: 10px 28px 10px 12px;
+  border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--ink); font-size: 13px;
+}
+.manual-planner-shell .energy-map-toolbar select:hover { border-color: var(--muted); }
+.manual-planner-shell .energy-map-toolbar button { min-height: 44px; }
+.manual-planner-shell .energy-map .primary { box-shadow: none; }
+.manual-planner-shell .energy-map-status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; min-height: 54px; padding: 12px 0; }
+.manual-planner-shell #energyMapStatus { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.manual-planner-shell #energyMapStatus.map-error { color: var(--red); }
+.manual-planner-shell #energyMapProgress { width: 160px; accent-color: var(--teal); height: 8px; }
+.manual-planner-shell .energy-map-empty { padding: 32px 18px 40px; text-align: center; }
+.manual-planner-shell .energy-map-empty h3 { margin: 0 0 10px; font-size: 22px; font-weight: 600; }
+.manual-planner-shell .energy-map-empty p { max-width: 65ch; margin: 0 auto; font-size: 14px; line-height: 1.75; color: var(--muted); }
+.manual-planner-shell .energy-map-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 32px; align-items: start; padding-top: 18px; border-top: 1px solid var(--line); }
+.manual-planner-shell .energy-map [hidden] { display: none !important; }
+.manual-planner-shell .energy-map-figure { min-width: 0; width: 100%; max-width: 900px; margin: 0 auto; }
+.manual-planner-shell #energyMapCanvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+.manual-planner-shell #energyMapRange { display: block; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.manual-planner-shell .energy-map-figure figcaption,
+.manual-planner-shell .energy-map-terrain-note { max-width: 75ch; margin: 10px 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.manual-planner-shell .energy-map-sample { padding-top: 20px; min-width: 0; }
+.manual-planner-shell .energy-map-sample h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.manual-planner-shell .energy-map-sample > p { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 12px 0; }
+.manual-planner-shell .energy-map-value { margin: 24px 0; display: flex; align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums; }
+.manual-planner-shell .energy-map-value strong { font-size: 34px; font-weight: 600; line-height: 1.2; }
+.manual-planner-shell .energy-map-value span { font-size: 14px; color: var(--muted); }
+.manual-planner-shell .energy-map-sample dl { margin: 0; border-top: 1px solid var(--line); }
+.manual-planner-shell .energy-map-sample dl > div { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.manual-planner-shell .energy-map-sample dt { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.manual-planner-shell .energy-map-sample dd { font-size: 15px; margin: 0; font-variant-numeric: tabular-nums; }
+.manual-planner-shell .energy-map-downloads { display: flex; gap: 12px; flex-wrap: wrap; margin: 24px 0; }
+.manual-planner-shell .energy-map-downloads button { min-height: 44px; }
+.manual-planner-shell .energy-map-footnote { max-width: 85ch; font-size: 12px; line-height: 1.75; color: var(--muted); margin: 10px 0 0; }
+.manual-planner-shell .energy-map-footnote a { color: var(--teal); text-decoration: underline; text-underline-offset: 3px; }
+.manual-planner-shell .energy-map :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.manual-planner-shell .energy-map button:disabled { cursor: not-allowed; }
+.manual-planner-shell .energy-map ::selection { background: #125763; color: #fff; }
+@media (max-width: 1000px) {
+  .manual-planner-shell .energy-map-body { grid-template-columns: minmax(0, 1fr) 210px; gap: 20px; }
+}
+@media (max-width: 760px) {
+  .manual-planner-shell .energy-map > summary { padding: 20px 16px; font-size: 18px; }
+  .manual-planner-shell .energy-map > summary small { display: none; }
+  .manual-planner-shell .energy-map-inner { padding: 0 16px 20px; }
+  .manual-planner-shell .energy-map-toolbar { gap: 12px; }
+  .manual-planner-shell .energy-map-toolbar label { flex: 1 1 130px; min-width: 0; }
+  .manual-planner-shell .energy-map-toolbar select { width: 100%; min-width: 0; font-size: 12px; }
+  .manual-planner-shell .energy-map-toolbar button { flex: 1 1 100%; }
+  .manual-planner-shell .energy-map-body { grid-template-columns: 1fr; gap: 12px; }
+  .manual-planner-shell .energy-map-sample { border-top: 1px solid var(--line); padding-top: 20px; }
+  .manual-planner-shell .energy-map-empty { padding: 24px 0; }
+  .manual-planner-shell .energy-map-empty h3 { font-size: 20px; }
+  .manual-planner-shell .energy-map-downloads button { flex: 1 1 130px; }
+  .manual-planner-shell #plannerPage:has(#energyMapSection[open]) #restoreGuide { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .manual-planner-shell .energy-map-chevron { transition: none; }
+}

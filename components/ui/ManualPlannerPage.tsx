@@ -1,13 +1,14 @@
 import React, { memo, useEffect, useRef } from 'react';
 import '../manual-planner/manual-planner.css';
-import '../manual-planner/planner-theme.css';
+import '../manual-planner/event-slider.css';
 import { hydrate, icon } from '../manual-planner/icons.js';
 import { DEFAULTS, evaluate, latestStart, distanceKm, sampleAt, normalize } from '../manual-planner/core/rehearsal.js';
 import { MissionScene } from '../manual-planner/scene.js';
 import { drawHorizon, drawTimeline, drawMap, fmtHours, fmtDate, timeUTC, escapeHTML as esc } from '../manual-planner/charts.js';
-import '../manual-planner/event-slider.css';
 import { attachEventLabels, syncEventLabels } from '../manual-planner/event-slider.js';
 import { PlannerFlow } from '../manual-planner/planner-flow.js';
+import { SolarEnergyPanel } from './SolarEnergyPanel';
+import { EnergyMapView } from '../manual-planner/solar-energy/energy-map-view.js';
 import { missionPlannerStore } from '../manual-planner/missionStore';
 
 export interface ManualPlannerPageProps {
@@ -88,12 +89,15 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
           <div id="decisionBody" aria-live="polite" />
         </section>
 
+        <SolarEnergyPanel />
+
         <div className="planner-detail-links">
           <button id="viewEvidence" type="button">
             <span data-icon="horizon" />
             Explore the calculated mission
             <span data-icon="down" />
           </button>
+          <button id="viewEnergyMap" type="button"><span data-icon="sun" />Solar energy map</button>
           <button id="editPlanDetails" type="button">
             <span data-icon="settings" />
             Plan details &amp; hardware
@@ -360,17 +364,35 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
                 Mission elapsed time
               </label>
               <input id="timeRange" type="range" min="0" max="24" defaultValue="0" step=".001" />
-              <div id="milestones" aria-label="Jump to a calculated mission event" />
+              <div aria-label="Jump to a calculated mission event" id="milestones" />
             </div>
             <div className="timeline-plot">
-              <canvas id="timelineCanvas" aria-label="Mission timeline showing sunlight, battery charge, measurement, Earth visibility, and transmission" />
+              <canvas
+                id="timelineCanvas"
+                aria-label="Mission timeline: sunlight shading behind battery level, blue measurement intervals, teal Earth visibility and purple transmission intervals. Battery color changes from green at high charge through yellow to red at low charge."
+              />
             </div>
             <div className="timeline-legend" aria-label="Timeline legend">
-              <span><i style={{ background: '#b88900' }} />Sunlight</span>
-              <span><i className="charge-key" />Battery: high → low</span>
-              <span><i style={{ background: '#1e40af' }} />Measurement</span>
-              <span><i style={{ background: '#115e59' }} />Earth visible / ground contact</span>
-              <span><i style={{ background: '#a78bfa' }} />Transmitting</span>
+              <span>
+                <i style={{ '--legend-color': 'var(--planner-sun)' } as React.CSSProperties} />
+                Sunlight
+              </span>
+              <span>
+                <i className="charge-key" />
+                Battery: high → low
+              </span>
+              <span>
+                <i style={{ '--legend-color': 'var(--planner-measurement)' } as React.CSSProperties} />
+                Measurement
+              </span>
+              <span>
+                <i style={{ '--legend-color': 'var(--planner-earth)' } as React.CSSProperties} />
+                Earth visible / ground contact
+              </span>
+              <span>
+                <i style={{ '--legend-color': 'var(--planner-transmission)' } as React.CSSProperties} />
+                Transmitting
+              </span>
             </div>
             <div className="timeline-bottom">
               <p id="completionSummary">Calculating your mission…</p>
@@ -630,7 +652,6 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
 
     let destroyed = false;
     let rafId = 0;
-    let detachEventLabels: (() => void) | undefined;
     let notifyTimer = 0;
     let isBootstrapping = true;
     let manualTouched = false;
@@ -663,6 +684,8 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
       cache: new Map(),
       latest: snapOnMount.latestStart || null,
     };
+
+    const energyMap = new EnergyMapView(() => state.bundle);
 
     function pushToSharedStore(markChecked = true) {
       if (isBootstrapping || !state.baseline) return;
@@ -884,9 +907,9 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
       $('timeReadout')!.textContent = `T + ${fmtHours(state.hour)}`;
       ($('timeRange') as HTMLInputElement).value = String(state.hour);
       $('playBtn')!.innerHTML = icon(state.playing ? 'pause' : 'play') + `<span>${state.playing ? 'Pause' : 'Play mission'}</span>`;
-      syncEventLabels($('milestones'), state.hour);
+      syncEventLabels($('milestones')!, state.hour);
       drawHorizon($('horizonCanvas') as HTMLCanvasElement, r, p);
-      drawTimeline($('timelineCanvas') as HTMLCanvasElement, r, state.hour, Number(($('timeRange') as HTMLInputElement).max));
+      drawTimeline($('timelineCanvas') as HTMLCanvasElement, r, state.hour, +($('timeRange') as HTMLInputElement).max);
     }
 
     function setTime(h: number, play = false) {
@@ -941,12 +964,14 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
         .join('');
       $('milestones')!
         .querySelectorAll<HTMLButtonElement>('button')
-        .forEach((button) => {
-          button.disabled = button.dataset.hour === '';
-          button.onclick = () => setTime(Number(button.dataset.hour));
+        .forEach((b) => {
+          b.disabled = b.dataset.hour === '';
+          b.onclick = () => {
+            if (b.dataset.hour !== '') setTime(+b.dataset.hour!);
+          };
         });
-      detachEventLabels = attachEventLabels($('timeRange'), $('milestones'), state.result.settings.durationHours, {
-        plotCanvas: $('timelineCanvas'),
+      attachEventLabels($('timeRange')!, $('milestones')!, state.result.settings.durationHours, {
+        plotCanvas: $('timelineCanvas')!,
       });
     }
 
@@ -985,6 +1010,7 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
     function showResult(r: any, preserveHour = false) {
       if (destroyed) return;
       state.result = r;
+      energyMap.setPlan(r, state.active === 'current' ? 'Current plan' : 'Inspected alternative');
       state.hour = preserveHour ? Math.min(state.hour, r.settings.durationHours) : 0;
       state.playing = false;
       state.latest = null;
@@ -1192,7 +1218,6 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
       };
       $('speedInput')!.onchange = () => (state.speed = +($('speedInput') as HTMLSelectElement).value);
       ($('timeRange') as HTMLInputElement).oninput = () => setTime(+($('timeRange') as HTMLInputElement).value);
-      $('timeRange')!.addEventListener('timeline-range-change', updateFrame, { signal });
       $('timelineCanvas')!.onclick = (e) => {
         const canvas = e.currentTarget as any;
         const info = canvas._timeline;
@@ -1200,6 +1225,7 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
         const rect = canvas.getBoundingClientRect();
         setTime(((e.clientX - rect.left - info.left) / (info.right - info.left)) * info.duration);
       };
+      ($('timeRange') as HTMLInputElement).addEventListener('timeline-range-change', updateFrame, { signal });
       $('latestBtn')!.onclick = findLatest;
 
       window.addEventListener(
@@ -1310,10 +1336,11 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
         });
       }
       destroyed = true;
-      detachEventLabels?.();
       abortController.abort();
       window.clearTimeout(notifyTimer);
       cancelAnimationFrame(rafId);
+      energyMap.destroy();
+      ($('milestones') as any)?._eventLayout?.disconnect();
       state.flow?.destroy();
       state.pending.clear();
       state.worker?.terminate();

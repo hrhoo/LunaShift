@@ -1,6 +1,6 @@
 import {timelinePlotBounds} from './charts.js';
 const eventHour=label=>{
- const raw=label.dataset.hour;
+ const raw=label.dataset.hour??label.dataset.replayHour;
  return raw===''||raw===undefined?null:Number(raw);
 };
 const timeLabel=hour=>{const minutes=Math.round(hour*60);return minutes<60?`${minutes} min`:`${Math.floor(minutes/60)}h${minutes%60?' '+minutes%60+'m':''}`;};
@@ -82,7 +82,6 @@ export function attachEventLabels(range,host,duration,{plotCanvas}={}){
  };
  host._eventLayout=new ResizeObserver(layout);host._eventLayout.observe(wrapper.parentElement);
  layout();
- return () => host._eventLayout.disconnect();
 }
 
 export function syncEventLabels(host,hour){
