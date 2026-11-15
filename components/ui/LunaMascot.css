@@ -1,4 +1,4 @@
-.luna-chat-mascot { position: relative; display: block; flex-shrink: 0; width: 60px; height: 76px; overflow: hidden; pointer-events: none; }
+.luna-chat-mascot { position: relative; display: block; flex-shrink: 0; width: 64.6px; height: 76px; overflow: hidden; pointer-events: none; }
 .luna-chat-mascot > span { position: absolute; inset: 0; overflow: hidden; }
 .luna-chat-mascot img { display: block; max-width: none; height: 100%; object-fit: fill; }
 .luna-chat-idle img { width: 200%; animation: luna-chat-blink 3.6s steps(1, end) infinite; }
