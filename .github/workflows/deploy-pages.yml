@@ -2,7 +2,7 @@ name: Deploy LunaShift to GitHub Pages
 
 on:
   push:
-    branches: [gh-pages]
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,6 +12,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BRANCH_SYNC_TOKEN || github.token }}
+      - name: Fast-forward gh-pages to the main commit
+        run: git push origin HEAD:refs/heads/gh-pages
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -27,7 +39,7 @@ jobs:
           path: dist
 
   deploy:
-    needs: build
+    needs: [sync, build]
     runs-on: ubuntu-latest
     permissions:
       pages: write
