@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 /**
  * AgentBuilderPage.tsx — Standalone, self-contained Agent Builder page component.
  *
@@ -3898,7 +3899,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
             <div className="absolute inset-0 rounded-full luna-tricolor-ring animate-spin" />
             <div className="relative z-10 w-24 h-24 rounded-full overflow-hidden flex items-center justify-center">
               <img
-                src="/assets/aistudio/Luna_Shift__3__4181c459.png"
+                src={publicAssetUrl('assets/aistudio/Luna_Shift__3__4181c459.png')}
                 alt="LunaShift Logo"
                 decoding="sync"
                 loading="eager"
@@ -3923,7 +3924,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
             <div className="flex items-center gap-3 z-10 min-w-0 max-w-[35%]">
               <div className="w-[58px] h-[58px] rounded-full overflow-hidden shrink-0 flex items-center justify-center">
                 <img
-                  src="/assets/aistudio/Luna_Shift__3__4181c459.png"
+                  src={publicAssetUrl('assets/aistudio/Luna_Shift__3__4181c459.png')}
                   alt="LunaShift Logo"
                   className="w-full h-full object-contain scale-[1.08]"
                 />

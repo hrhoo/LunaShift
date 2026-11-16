@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 import { useSyncExternalStore } from 'react';
 import { DEFAULTS, distanceKm, evaluate, latestStart, normalize } from './core/rehearsal.js';
 import { orderedAlternatives } from './planner-decision.js';
@@ -360,7 +361,7 @@ class MissionPlannerStore {
     this.update({ loadingBundle: true, loadError: null });
     this.loadPromise = (async () => {
       try {
-        const resp = await fetch('/data/lunar-data.json');
+        const resp = await fetch(publicAssetUrl('data/lunar-data.json'));
         if (!resp.ok) throw new Error('Could not load NASA terrain/ephemeris dataset.');
         const bundle = await resp.json();
         this.bundle = bundle;

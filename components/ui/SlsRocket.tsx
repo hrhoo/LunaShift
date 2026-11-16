@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -100,7 +101,7 @@ export default function SlsRocket({ isLaunching = false, isLiftoff = false }: Sl
 
     const loader = new GLTFLoader();
     loader.load(
-      '/assets/aistudio/nasa_sls_block_1_crew_v4.glb',
+      publicAssetUrl('assets/aistudio/nasa_sls_block_1_crew_v4.glb'),
       (gltf) => {
         if (!alive) return;
         const model = gltf.scene;

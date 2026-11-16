@@ -1,3 +1,4 @@
+import { publicAssetUrl } from './publicAssetUrl.js';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -9,8 +10,8 @@ import Lanyard from '@/components/ui/Lanyard';
 import ManualPlannerPage from '@/components/ui/ManualPlannerPage';
 import moonBgVideoUrl from './assets/moon-bg.mp4';
 
-const BADGE_LOGO_SRC = '/assets/aistudio/Luna_Shift__3__4181c459.png';
-const STRAP_LOGO_SRC = '/assets/aistudio/Luna_Shift__2__8704c0a0.png';
+const BADGE_LOGO_SRC = publicAssetUrl('assets/aistudio/Luna_Shift__3__4181c459.png');
+const STRAP_LOGO_SRC = publicAssetUrl('assets/aistudio/Luna_Shift__2__8704c0a0.png');
 
 function createStrapDataUrl(wormImg?: HTMLImageElement): string {
   const canvas = document.createElement('canvas');

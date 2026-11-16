@@ -1,8 +1,9 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 /** Luna's supplied artwork, packed into aligned idle and bongo strips. */
 export function lunaRabbit(kind='peek') {
  return `<span class="luna-rabbit luna-rabbit-${kind}" aria-hidden="true">
-  <span class="luna-idle"><img src="/assets/luna/idle.png" alt="" draggable="false" width="680" height="400"></span>
-  <span class="luna-bongo"><img src="/assets/luna/bongo.png" alt="" draggable="false" width="1360" height="400"></span>
+  <span class="luna-idle"><img src="${publicAssetUrl('assets/luna/idle.png')}" alt="" draggable="false" width="680" height="400"></span>
+  <span class="luna-bongo"><img src="${publicAssetUrl('assets/luna/bongo.png')}" alt="" draggable="false" width="1360" height="400"></span>
  </span>`;
 }
 

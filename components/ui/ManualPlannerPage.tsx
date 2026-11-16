@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LunaSpecularButton } from './SpecularButton';
@@ -39,7 +40,7 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
           title="Back to Luna Planner"
           onClick={onBackClick}
         >
-          <img src="/assets/aistudio/Luna_Shift__3__4181c459.png" alt="LunaShift Logo" />
+          <img src={publicAssetUrl('assets/aistudio/Luna_Shift__3__4181c459.png')} alt="LunaShift Logo" />
         </button>
         <div className="header-right">
           <button id="sourceBtn" type="button" className="text-btn">

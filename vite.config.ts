@@ -217,6 +217,7 @@ function openrouterApiPlugin(mode: string): Plugin {
 
 export default defineConfig(({ mode }) => {
   return {
+    base: '/LunaShift/',
     plugins: [react(), tailwindcss(), openrouterApiPlugin(mode)],
     resolve: {
       alias: {

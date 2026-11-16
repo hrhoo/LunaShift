@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -29,8 +30,8 @@ import { missionPlannerStore, type MissionSample, type MissionResult } from '../
 import { updateSurfaceMissionSky, createSunOcclusion, SUN_DISPLAY_RADIUS } from './surface-mission-sky.js';
 import { MissionSiteSurface } from './mission-site-surface.js';
 
-const EARTH_GLB_URL = '/assets/aistudio/Earth_1_12756.glb';
-const MOON_GLB_URL = '/assets/aistudio/moon_small.glb';
+const EARTH_GLB_URL = publicAssetUrl('assets/aistudio/Earth_1_12756.glb');
+const MOON_GLB_URL = publicAssetUrl('assets/aistudio/moon_small.glb');
 import SUN_GLB_URL from './Sun_1_1391000.glb?url';
 
 let cachedSoftwareGlResult: boolean | null = null;

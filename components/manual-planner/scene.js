@@ -1,3 +1,4 @@
+import { publicAssetUrl } from '../../src/publicAssetUrl.js';
 import * as T from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { interpolateHorizon } from './core/solar-model.js';
@@ -169,7 +170,7 @@ export class MissionScene {
     this.regolith.repeat.set(90, 90);
 
     this.earthImage = new Image();
-    this.earthImage.src = '/assets/earth-illustration.webp';
+    this.earthImage.src = publicAssetUrl('assets/earth-illustration.webp');
     this.earthImage.onload = () => {
       if (!this.disposed && this.sample) this.updateBodies();
     };
