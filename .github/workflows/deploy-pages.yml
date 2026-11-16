@@ -38,3 +38,15 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  sync-gh-pages:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Sync the deployed main commit to gh-pages
+        run: git push origin "$GITHUB_SHA:refs/heads/gh-pages"
