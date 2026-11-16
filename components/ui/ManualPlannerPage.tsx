@@ -5,7 +5,7 @@ import { hydrate, icon } from '../manual-planner/icons.js';
 import { DEFAULTS, evaluate, latestStart, distanceKm, sampleAt, normalize } from '../manual-planner/core/rehearsal.js';
 import { MissionScene } from '../manual-planner/scene.js';
 import { drawHorizon, drawTimeline, drawMap, fmtHours, fmtDate, timeUTC, escapeHTML as esc } from '../manual-planner/charts.js';
-import { attachEventLabels, syncEventLabels } from '../manual-planner/event-slider.js';
+import { attachMissionEvents, syncEventLabels } from '../manual-planner/event-slider.js';
 import { PlannerFlow } from '../manual-planner/planner-flow.js';
 import { SolarEnergyPanel } from './SolarEnergyPanel';
 import { EnergyMapView } from '../manual-planner/solar-energy/energy-map-view.js';
@@ -945,34 +945,7 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
     }
 
     function renderMilestones() {
-      const m = state.result.metrics;
-      const items: Array<[string, string, string, number | null]> = [
-        ['landing', 'pin', 'Landed', 0],
-        ['ready', 'battery', 'Energy ready', m.readyHour],
-        ['science', 'flask', 'Measurement', m.scienceStartHour],
-        ['data', 'data', 'Data created', m.scienceEndHour],
-        ['transmit', 'antenna', 'Sending begins', m.firstTxHour],
-        ['complete', 'check', 'Result returned', m.completeHour],
-      ];
-      $('milestones')!.innerHTML = items
-        .map(
-          ([key, i, title, h]) =>
-            `<button class="milestone" type="button" data-event="${key}" data-hour="${h === null ? '' : h}"><span>${icon(
-              i
-            )}</span><span><small>${title}</small><b>${h === 0 ? 'T + 0' : stamp(h)}</b></span></button>`
-        )
-        .join('');
-      $('milestones')!
-        .querySelectorAll<HTMLButtonElement>('button')
-        .forEach((b) => {
-          b.disabled = b.dataset.hour === '';
-          b.onclick = () => {
-            if (b.dataset.hour !== '') setTime(+b.dataset.hour!);
-          };
-        });
-      attachEventLabels($('timeRange')!, $('milestones')!, state.result.settings.durationHours, {
-        plotCanvas: $('timelineCanvas')!,
-      });
+      attachMissionEvents($('timeRange')!, $('milestones')!, state.result, $('timelineCanvas')!, (hour: number) => setTime(hour));
     }
 
     function renderOutcome() {

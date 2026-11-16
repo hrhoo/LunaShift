@@ -21,6 +21,10 @@
   --navy: #101827;
   --radius: 16px;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+.manual-planner-shell,
+.mission-timeline-chart {
   --planner-ink: #f1f5ff;
   --planner-muted: #b7c6de;
   --planner-line: #334155;
@@ -1524,9 +1528,13 @@
   position: relative;
 }
 
+.mission-timeline-chart,
+.manual-planner-shell #plannerPage #timelineCanvas {
+  height: 171.955px;
+}
+
 .manual-planner-shell #timelineCanvas {
   width: 100%;
-  height: 238px;
   display: block;
   cursor: crosshair;
 }
@@ -3926,10 +3934,6 @@
 
 .manual-planner-shell #plannerPage :is(.time-scrubber > span, .play-controls .icon-btn) {
   color: var(--muted);
-}
-
-.manual-planner-shell #plannerPage #timelineCanvas {
-  height: 238px;
 }
 
 .manual-planner-shell #plannerPage .timeline-legend {

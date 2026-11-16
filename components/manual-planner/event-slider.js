@@ -1,3 +1,4 @@
+import {icon} from './icons.js';
 import {timelinePlotBounds} from './charts.js';
 const eventHour=label=>{
  const raw=label.dataset.hour??label.dataset.replayHour;
@@ -5,8 +6,36 @@ const eventHour=label=>{
 };
 const timeLabel=hour=>{const minutes=Math.round(hour*60);return minutes<60?`${minutes} min`:`${Math.floor(minutes/60)}h${minutes%60?' '+minutes%60+'m':''}`;};
 
+/** @param {HTMLElement | null} [controlsHost] Optional header container for the time-range selector. */
+export function attachMissionEvents(range, host, result, plotCanvas, onSelect, controlsHost = null) {
+ const m = result.metrics;
+ const events = [
+  ['landing', 'pin', 'Landed', 0],
+  ['ready', 'battery', 'Energy ready', m.readyHour],
+  ['science', 'flask', 'Measurement', m.scienceStartHour],
+  ['data', 'data', 'Data created', m.scienceEndHour],
+  ['transmit', 'antenna', 'Sending begins', m.firstTxHour],
+  ['complete', 'check', 'Result returned', m.completeHour],
+ ];
+ host.replaceChildren();
+ for (const [key, symbol, title, hour] of events) {
+  const button = document.createElement('button');
+  button.dataset.event = key;
+  button.dataset.hour = hour ?? '';
+  button.disabled = hour == null;
+  button.innerHTML = `<span>${icon(symbol)}</span><span><small>${title}</small><b>Not reached</b></span>`;
+  button.onclick = () => onSelect(hour, key);
+  host.append(button);
+ }
+ attachEventLabels(range, host, result.settings.durationHours, {plotCanvas, controlsHost});
+ return () => {
+  host._eventLayout.disconnect();
+  controlsHost?.replaceChildren();
+ };
+}
+
 // Labels may move to avoid collisions; their track markers always keep true time.
-export function attachEventLabels(range,host,duration,{plotCanvas}={}){
+export function attachEventLabels(range,host,duration,{plotCanvas,controlsHost}={}){
  host._eventLayout?.disconnect();
  let wrapper=range.closest('.event-timeline');
  if(!wrapper){wrapper=document.createElement('div');wrapper.className='event-timeline';range.before(wrapper);wrapper.append(range,host);}
@@ -28,19 +57,23 @@ export function attachEventLabels(range,host,duration,{plotCanvas}={}){
  const select=document.createElement('select');select.setAttribute('aria-label','Timeline time range');
  select.add(new Option(`Mission events · ${timeLabel(focus)}`,'events'));
  select.add(new Option(`Full mission · ${timeLabel(duration)}`,'full'));
- controls.append(description,select);wrapper.before(controls);
+ controls.append(description,select);
+ if(controlsHost)controlsHost.replaceChildren(controls);
+ else wrapper.before(controls);
  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
  svg.classList.add('event-leaders');svg.setAttribute('aria-hidden','true');host.prepend(svg);
  const ticks=document.createElement('div');ticks.className='event-axis-ticks';wrapper.append(ticks);
  let currentHour=Number(range.value),full=currentHour>focus;
  const layout=()=>{
   if(plotCanvas){
-   const plotWidth=plotCanvas.getBoundingClientRect().width;
+   const plotWidth=plotCanvas.clientWidth;
    if(!plotWidth)return;
    const {left,right}=timelinePlotBounds(plotWidth);
-   wrapper.style.marginLeft=`${left-11}px`;wrapper.style.width=`${right-left+22}px`;
+   // The chart uses unzoomed pixels. Convert its bounds to the slider's local units.
+   const zoom=Number(getComputedStyle(wrapper).zoom)||1;
+   wrapper.style.marginLeft=`${left/zoom-11}px`;wrapper.style.width=`${(right-left)/zoom+22}px`;
   }
-  const width=wrapper.getBoundingClientRect().width;if(!width)return;
+  const width=wrapper.clientWidth;if(!width)return;
   const span=full?duration:focus;range.max=span;select.value=full?'full':'events';
   const gap=14,columns=Math.max(1,Math.floor(width/140)),cardWidth=Math.min(138,(width-gap*(columns-1))/columns);
   const sides=[labels.filter((_,i)=>i%2===0),labels.filter((_,i)=>i%2===1)];

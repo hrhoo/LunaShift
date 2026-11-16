@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './PlannerHudOverlay.css';
+import '../manual-planner/event-slider.css';
+import { attachMissionEvents, syncEventLabels } from '../manual-planner/event-slider.js';
 import {
   AlertTriangle,
   BatteryCharging,
@@ -7,20 +9,17 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Eye,
   Maximize2,
   Pause,
   Play,
   Radio,
   RotateCcw,
-  SlidersHorizontal,
   Sparkles,
   Sun,
 } from 'lucide-react';
-import { fmtDate, fmtHours, timeUTC } from '../manual-planner/charts.js';
+import { drawTimeline, timelinePlotBounds, fmtDate, fmtHours, timeUTC } from '../manual-planner/charts.js';
 import { sampleAt } from '../manual-planner/core/rehearsal.js';
 import {
-  type CameraFocusMode,
   type MissionResult,
   type MissionSample,
   STATION_LABELS,
@@ -29,6 +28,66 @@ import {
   useMissionPlannerStore,
 } from '../manual-planner/missionStore';
 import { checkRows, outcomeTitle } from '../manual-planner/planner-decision.js';
+
+function OverviewTimeline({ result, hour, controlsHost }: {
+  result: MissionResult;
+  hour: number;
+  controlsHost: React.RefObject<HTMLDivElement | null>;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const eventsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = ref.current!;
+    const range = rangeRef.current!;
+    range.max = String(result.settings.durationHours);
+    range.value = String(missionPlannerStore.getSnapshot().hour);
+    const draw = () => drawTimeline(canvas, result, missionPlannerStore.getSnapshot().hour, Number(range.max));
+    const seek = () => missionPlannerStore.setHour(Number(range.value), false);
+    range.addEventListener('input', seek);
+    range.addEventListener('timeline-range-change', draw);
+    const disconnect = attachMissionEvents(range, eventsRef.current!, result, canvas, (time: number, key: string) => {
+      missionPlannerStore.setHour(time, false);
+      if (key === 'landing') missionPlannerStore.setCameraFocus('default');
+      if (key === 'transmit') missionPlannerStore.setCameraFocus('earth');
+    }, controlsHost.current);
+    return () => {
+      disconnect();
+      range.removeEventListener('input', seek);
+      range.removeEventListener('timeline-range-change', draw);
+    };
+  }, [result, controlsHost]);
+
+  useEffect(() => {
+    syncEventLabels(eventsRef.current!, hour);
+    drawTimeline(ref.current!, result, hour, Number(rangeRef.current!.max));
+  }, [result, hour]);
+
+  return (
+    <div className="ls-overview overflow-y-auto max-h-[calc(23.04vh_-_0.9rem)] [--mono:ui-monospace,monospace]">
+      <div className="event-timeline">
+        <input ref={rangeRef} id="ovReplayRange" type="range" min="0" step=".001" aria-label="Scrub mission elapsed hours" />
+        <div ref={eventsRef} aria-label="Jump to a calculated mission event" />
+      </div>
+    <canvas
+      ref={ref}
+      className="mission-timeline-chart block w-full cursor-pointer"
+      aria-label="Mission timeline showing sunlight, battery charge, measurement, Earth visibility and transmission"
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const width = event.currentTarget.clientWidth;
+        const { left, right } = timelinePlotBounds(width);
+        if (!rect.width || right <= left) return;
+        const x = (event.clientX - rect.left) * width / rect.width;
+        const fraction = Math.max(0, Math.min(1, (x - left) / (right - left)));
+        missionPlannerStore.setHour(fraction * Number(rangeRef.current!.max), false);
+      }}
+    />
+    </div>
+  );
+}
 
 interface PlannerHudOverlayProps {
   active: boolean;
@@ -44,6 +103,7 @@ export const PlannerHudOverlay: React.FC<PlannerHudOverlayProps> = ({
   const store = useMissionPlannerStore();
   const hour = useMissionHour();
   const [collapsed, setCollapsed] = useState(false);
+  const timelineControlsRef = useRef<HTMLDivElement>(null);
 
   const activeResult: MissionResult | null = store.preview || store.baseline;
   const isPreview = Boolean(store.preview);
@@ -124,39 +184,6 @@ export const PlannerHudOverlay: React.FC<PlannerHudOverlayProps> = ({
     },
   };
   const currentPhase = phaseMeta[currentSample.phase] || phaseMeta.charging;
-
-  const milestones: Array<{ key: string; label: string; hour: number | null; focus?: CameraFocusMode }> = [
-    { key: 'landing', label: 'Landed', hour: 0, focus: 'default' },
-    { key: 'ready', label: 'Ready', hour: m.readyHour },
-    { key: 'science', label: 'Science', hour: m.scienceStartHour },
-    { key: 'data', label: 'Created', hour: m.scienceEndHour },
-    { key: 'transmit', label: 'Transmit', hour: m.firstTxHour, focus: 'earth' },
-    { key: 'complete', label: 'Returned', hour: m.completeHour },
-  ];
-
-  // Build SVG polyline points for battery SoC across duration
-  const socPolyline = activeResult.samples
-    .map((pt) => {
-      const x = (pt.elapsedHours / duration) * 100;
-      const y = 100 - Math.max(0, Math.min(100, pt.socPct));
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-  const reserveY = 100 - Math.max(0, Math.min(100, s.reservePct));
-  const playheadPct = Math.max(0, Math.min(100, (hour / duration) * 100));
-
-  const renderTrackWindows = (windows: Array<[number, number]>, colorClass: string) =>
-    windows.map(([a, b], idx) => {
-      const leftPct = Math.max(0, (a / duration) * 100);
-      const widthPct = Math.max(0.8, ((b - a) / duration) * 100);
-      return (
-        <span
-          key={idx}
-          className={`absolute top-0 bottom-0 rounded-full ${colorClass}`}
-          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-        />
-      );
-    });
 
   if (collapsed) {
     return (
@@ -427,9 +454,9 @@ export const PlannerHudOverlay: React.FC<PlannerHudOverlayProps> = ({
         </div>
 
         {/* BOTTOM DOCK: Translucent Glassmorphism Timeline, Surgical Tracks & Capsule Tags */}
-        <div className="pointer-events-auto w-full @[820px]:flex-1 min-w-0 vision-glass backdrop-blur-2xl bg-[#101319]/65 border border-white/20 rounded-[18px] px-3 py-2 space-y-1.5">
+        <div className="pointer-events-auto w-full @[820px]:flex-1 min-w-0 vision-glass backdrop-blur-2xl bg-[#101319]/65 border border-white/20 rounded-[18px] px-3 pt-1 pb-2 space-y-1.5">
         {/* Controls & Phase Header */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-[1in] gap-y-1.5">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -456,166 +483,11 @@ export const PlannerHudOverlay: React.FC<PlannerHudOverlayProps> = ({
               · {currentPhase.label}
             </span>
           </div>
-
-          {/* 3D Camera Focus Capsule Pills */}
-          <div className="flex items-center gap-1">
-            {(
-              [
-                { id: 'default', label: '3D Pad', deg: null, icon: SlidersHorizontal },
-                { id: 'sun', label: 'Sun', deg: `${currentSample.sunElDeg.toFixed(1)}°`, icon: Sun },
-                { id: 'earth', label: 'Earth', deg: `${currentSample.earthElDeg.toFixed(1)}°`, icon: Eye },
-              ] as const
-            ).map((cam) => {
-              const IconComp = cam.icon;
-              const isActiveCam = store.cameraFocus === cam.id;
-              return (
-                <button
-                  key={cam.id}
-                  type="button"
-                  onClick={() => missionPlannerStore.setCameraFocus(cam.id)}
-                  className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-medium border transition-colors cursor-pointer ${
-                    isActiveCam
-                      ? 'bg-[#1ac8db]/15 text-[#1ac8db] border-[#1ac8db]/30'
-                      : 'bg-white/[0.06] text-white/75 hover:text-white border-white/10 hover:bg-white/[0.12]'
-                  }`}
-                >
-                  <IconComp className="w-2.5 h-2.5" />
-                  <span>{cam.label}</span>
-                  {cam.deg && <span className="font-telemetry text-[8.5px]">{cam.deg}</span>}
-                </button>
-              );
-            })}
-          </div>
+          <div ref={timelineControlsRef} className="timeline-header-range ml-auto [--mono:ui-monospace,monospace]" />
         </div>
 
-        {/* Multi-Track Surgical Progress Bars (4px height, capsule ends, 10% white tracks) + Battery Curve */}
-        <div className="relative pt-0.5">
-          <div className="space-y-1">
-            {[
-              {
-                label: 'Sunlight',
-                windows: activeResult.windows.sun,
-                cls: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.45)]',
-              },
-              {
-                label: 'Science',
-                windows: activeResult.windows.science,
-                cls: 'bg-[#1ac8db] shadow-[0_0_10px_rgba(26,200,219,0.75)]',
-              },
-              {
-                label: 'Contact',
-                windows: activeResult.windows.link,
-                cls: 'bg-[#1ac8db]/60 shadow-[0_0_8px_rgba(26,200,219,0.4)]',
-              },
-              {
-                label: 'Transmit',
-                windows: activeResult.windows.transmitting,
-                cls: 'bg-[#00E81F] shadow-[0_0_10px_rgba(0,232,31,0.75)]',
-              },
-            ].map((track) => (
-              <div key={track.label} className="flex items-center gap-2">
-                <span className="w-[42px] text-[8px] font-medium text-white/55 text-right shrink-0">
-                  {track.label}
-                </span>
-                <div className="relative flex-1 h-[4px] rounded-full bg-white/10 overflow-hidden">
-                  {renderTrackWindows(track.windows, track.cls)}
-                </div>
-              </div>
-            ))}
-
-            {/* Battery curve track */}
-            <div className="flex items-center gap-2 pt-0.5">
-              <span className="w-[42px] text-[8px] font-medium text-white/55 text-right shrink-0">Battery</span>
-              <div className="relative flex-1 h-3 rounded-full bg-white/[0.06] border border-white/[0.06] overflow-hidden">
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full block">
-                  <line
-                    x1="0"
-                    y1={reserveY}
-                    x2="100"
-                    y2={reserveY}
-                    stroke="#fbbf24"
-                    strokeOpacity="0.6"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 3"
-                  />
-                  <polyline
-                    fill="none"
-                    stroke="#00E81F"
-                    strokeWidth="2.5"
-                    vectorEffect="non-scaling-stroke"
-                    style={{ filter: 'drop-shadow(0 0 4px rgba(0,232,31,0.55))' }}
-                    points={socPolyline}
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {/* Vertical Laser Playhead across surgical tracks */}
-          <div className="pointer-events-none absolute top-0.5 bottom-0 left-[50px] right-0" aria-hidden="true">
-            <div
-              className="absolute top-0 bottom-0 w-[1.5px] bg-gradient-to-b from-white via-[#1ac8db] to-white shadow-[0_0_8px_rgba(26,200,219,0.9)]"
-              style={{ left: `${playheadPct}%` }}
-            />
-          </div>
-
-          {/* Surgical Range Scrubber aligned cleanly over tracks */}
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-[42px] font-telemetry text-[8px] text-white/45 text-right shrink-0">Scrub</span>
-            <input
-              type="range"
-              aria-label="Scrub mission elapsed hours"
-              min={0}
-              max={duration}
-              step={Math.max(0.05, duration / 240)}
-              value={hour}
-              onChange={(e) => missionPlannerStore.setHour(Number(e.target.value), false)}
-              className="vision-scrubber flex-1"
-              style={{
-                background: `linear-gradient(to right, #1ac8db 0%, #1ac8db ${playheadPct}%, rgba(255, 255, 255, 0.14) ${playheadPct}%, rgba(255, 255, 255, 0.14) 100%)`,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Signature Apple Capsule Milestone Tags */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-0.5">
-          <div className="flex flex-wrap items-center gap-1">
-            {milestones.map((ms) => {
-              const reached = ms.hour !== null && ms.hour <= hour + 1e-6;
-              return (
-                <button
-                  key={ms.key}
-                  type="button"
-                  disabled={ms.hour === null}
-                  onClick={() => {
-                    if (ms.hour === null) return;
-                    const offset =
-                      ms.key === 'transmit'
-                        ? Math.min(0.03, m.transmissionHours / 2)
-                        : ms.key === 'science'
-                        ? 0.02
-                        : 0;
-                    missionPlannerStore.setHour(ms.hour + offset, false);
-                    if (ms.focus) missionPlannerStore.setCameraFocus(ms.focus);
-                  }}
-                  className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[8.5px] border transition-colors ${
-                    ms.hour === null
-                      ? 'bg-white/[0.02] text-white/30 border-white/[0.06] cursor-not-allowed'
-                      : reached
-                      ? 'bg-[#00E81F]/10 text-[#00E81F] border-[#00E81F]/25 hover:bg-[#00E81F]/18 cursor-pointer'
-                      : 'bg-white/[0.05] text-white/75 border-white/10 hover:bg-white/[0.12] hover:text-white cursor-pointer'
-                  }`}
-                >
-                  <span className="font-medium">{ms.label}</span>
-                  <span className="font-telemetry text-[8px] opacity-90">
-                    {ms.hour === null ? '—' : ms.hour === 0 ? 'T+0' : fmtHours(ms.hour)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
+        <OverviewTimeline result={activeResult} hour={hour} controlsHost={timelineControlsRef} />
+        <div className="flex justify-end">
           <span className="hidden xl:inline font-telemetry text-[8px] tracking-[0.14em] text-white/45 uppercase">
             Scroll to zoom · Drag to orbit
           </span>

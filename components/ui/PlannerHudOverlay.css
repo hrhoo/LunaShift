@@ -1,4 +1,34 @@
 /* Apple visionOS × NASA Mission Control Glassmorphism HUD */
+.ls-overview {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(225 230 238 / 42%) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .ls-overview {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+
+  .ls-overview::-webkit-scrollbar {
+    width: 5px;
+    background: transparent;
+  }
+
+  .ls-overview::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgb(225 230 238 / 42%);
+  }
+
+  .ls-overview::-webkit-scrollbar-thumb:hover {
+    background: rgb(225 230 238 / 68%);
+  }
+
+  .ls-overview::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
 .font-telemetry {
   font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-variant-numeric: tabular-nums;

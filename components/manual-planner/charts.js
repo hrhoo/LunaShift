@@ -5,7 +5,7 @@ export function fmtHours(h){if(h===null||h===undefined||!Number.isFinite(h))retu
 export function fmtDate(utc,short=false){return new Date(utc).toLocaleDateString('en-GB',{day:'2-digit',month:'short',...(!short?{year:'numeric'}:{}),timeZone:'UTC'});}
 export function timeUTC(utc){return new Date(utc).toISOString().slice(11,16);}
 export function escapeHTML(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function setup(canvas){const rect=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio,2);if(!rect.width||!rect.height)return null;const w=rect.width,h=rect.height;if(canvas.width!==Math.round(w*d)||canvas.height!==Math.round(h*d)){canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);}const c=canvas.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,w,h);return {c,w,h};}
+function setup(canvas){const w=canvas.clientWidth,h=canvas.clientHeight,d=Math.min(devicePixelRatio,2);if(!w||!h)return null;if(canvas.width!==Math.round(w*d)||canvas.height!==Math.round(h*d)){canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);}const c=canvas.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,w,h);return {c,w,h};}
 export function drawHorizon(canvas,result,p){const ctx=setup(canvas);if(!ctx||!result||!p)return;const {c,w,h}=ctx,hor=result.horizon;let min=Math.min(-7,...hor.elevationDeg,p.earthElDeg-1.5),max=Math.max(8,...hor.elevationDeg,p.sunElDeg+1.2);
  const planner=!!canvas.closest('#plannerPage'),colors=planner?{grid:'#334155',text:'#b7c6de',fill:'#263448',terrain:'#94a3b8',zero:'#64748b',sun:'#facc15',earth:'#5eead4',station:'#a78bfa'}:{grid:'#ffffff0b',text:'#77909c',fill:'#6f849b1f',terrain:'#788f9c',zero:'#ffffff1d',sun:'#e2c783',earth:'#89b7d5',station:'#8bc8b5'};
  const left=31,right=w-15,top=10,bottom=h-23,X=a=>left+(a/360)*(right-left),Y=e=>bottom-(e-min)/(max-min)*(bottom-top);
@@ -33,16 +33,17 @@ export const timelinePlotBounds=width=>({left:width<600?85:114,right:width-48});
 export function drawTimeline(canvas,result,hour,displayDuration=result?.settings.durationHours){
  const ctx=setup(canvas);if(!ctx||!result)return;
  canvas._redrawTimeline=()=>drawTimeline(canvas,result,hour,displayDuration);
- const {c,w,h}=ctx,{left,right}=timelinePlotBounds(w),top=16,duration=Math.min(result.settings.durationHours,displayDuration);
+ const {c,w,h}=ctx,{left,right}=timelinePlotBounds(w),top=12,duration=Math.min(result.settings.durationHours,displayDuration);
  const style=getComputedStyle(canvas),color=(name,fallback)=>style.getPropertyValue('--planner-'+name).trim()||fallback;
  const palette={ink:color('ink','#17233b'),muted:color('muted','#4b5c76'),track:color('track','#eef2f9'),grid:color('line','#d7e0ef'),sun:color('sun','#facc15'),sunIcon:color('sun-icon','#713f12'),science:color('measurement','#bfdbfe'),scienceIcon:color('measurement-icon','#1e40af'),earth:color('earth','#99f6e4'),earthIcon:color('earth-icon','#115e59'),tx:color('transmission','#7c3aed'),txIcon:color('transmission-icon','#ffffff')};
- const X=t=>left+clamp(t/duration,0,1)*(right-left),energyHeight=80,scienceY=top+98,earthY=scienceY+44,earthHeight=44;
+ const X=t=>left+clamp(t/duration,0,1)*(right-left),energyHeight=58,scienceHeight=19,earthHeight=32;
+ const scienceY=top+energyHeight+12,earthY=scienceY+scienceHeight+12;
  const batteryY=pct=>top+energyHeight-6-clamp(pct,0,100)/100*(energyHeight-12);
  c.font='11px system-ui';c.textAlign='right';c.fillStyle=palette.muted;
- c.fillText('Sunlight',left-12,top+30);c.fillText('+ battery',left-12,top+46);
- c.fillText('Measurement',left-12,scienceY+17);
- c.fillText('Earth visible',left-12,earthY+17);c.fillText('+ transmitting',left-12,earthY+33);
- for(const [y,height]of [[top,energyHeight],[scienceY,26],[earthY,earthHeight]]){c.fillStyle=palette.track;c.fillRect(left,y,right-left,height);}
+ c.fillText('Sunlight',left-12,top+energyHeight/2-4);c.fillText('+ battery',left-12,top+energyHeight/2+12);
+ c.fillText('Measurement',left-12,scienceY+scienceHeight/2+4);
+ c.fillText('Earth visible',left-12,earthY+earthHeight/2-4);c.fillText('+ transmitting',left-12,earthY+earthHeight/2+12);
+ for(const [y,height]of [[top,energyHeight],[scienceY,scienceHeight],[earthY,earthHeight]]){c.fillStyle=palette.track;c.fillRect(left,y,right-left,height);}
  const windows=(ws,y,height,fill,symbol,symbolColor,symbolY=y+height/2)=>{
   for(const [a,b]of ws||[]){const x=X(a),width=X(b)-x;if(width<=0)continue;
    c.fillStyle=fill;c.fillRect(x,y,width,height);
@@ -66,7 +67,7 @@ export function drawTimeline(canvas,result,hour,displayDuration=result?.settings
  }c.strokeStyle=gradient;c.lineWidth=2.5;c.stroke();
  c.strokeStyle='#fb923c';c.lineWidth=1;c.setLineDash([2,4]);c.beginPath();c.moveTo(left,batteryY(result.settings.reservePct));c.lineTo(right,batteryY(result.settings.reservePct));c.stroke();c.setLineDash([]);
  for(const [a,b]of result.windows.sun||[])if(X(b)-X(a)>=18)timelineIcon(c,canvas,'sun',palette.sunIcon,(X(a)+X(b))/2,top+energyHeight-17);
- windows(result.windows.science,scienceY,26,palette.science,'flask',palette.scienceIcon);
+ windows(result.windows.science,scienceY,scienceHeight,palette.science,'flask',palette.scienceIcon);
  windows(result.windows.link,earthY,earthHeight,palette.earth);
  for(const [a,b]of result.windows.link||[])if(X(b)-X(a)>=18)timelineIcon(c,canvas,'earth',palette.earthIcon,(X(a)+X(b))/2,earthY+earthHeight/2);
  for(const [a,b]of result.windows.transmitting||[]){
