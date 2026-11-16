@@ -5,6 +5,7 @@
  */
 
 export const OPENROUTER_CHAT_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const apiBaseUrl = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 export const NEMOTRON_MODEL_ID = 'nvidia/nemotron-3-ultra-550b-a55b';
 export const NEMOTRON_DISPLAY_NAME = 'Nemotron 3 Ultra';
 export const NEMOTRON_MODEL_PAGE_URL = 'https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b';
@@ -142,7 +143,7 @@ export function getActiveByokModelId(): string {
 
 export async function fetchServerAiStatus(signal?: AbortSignal): Promise<ServerAiStatus> {
   try {
-    const resp = await fetch('/api/ai/status', { method: 'GET', signal });
+    const resp = await fetch(`${apiBaseUrl}/api/ai/status`, { method: 'GET', signal });
     if (!resp.ok) {
       return { configured: false, model: NEMOTRON_MODEL_ID, provider: 'openrouter', keySource: 'none' };
     }
@@ -387,7 +388,7 @@ async function consumeSseStream(
 export async function callOpenRouterNemotron(options: OpenRouterChatOptions): Promise<OpenRouterChatResult> {
   const directKey = (options.apiKey ?? getStoredOpenRouterKey()).trim();
   const useDirectOpenRouter = Boolean(directKey);
-  const url = useDirectOpenRouter ? OPENROUTER_CHAT_ENDPOINT : options.chatEndpoint || '/api/chat';
+  const url = useDirectOpenRouter ? OPENROUTER_CHAT_ENDPOINT : options.chatEndpoint || `${apiBaseUrl}/api/chat`;
   const stream = options.stream ?? true;
   const timeoutMs = options.timeoutMs ?? 60000;
 

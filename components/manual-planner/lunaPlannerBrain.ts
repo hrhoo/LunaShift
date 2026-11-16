@@ -936,7 +936,7 @@ export async function processFreeformLunaMessage({
   draft,
   storeSnapshot,
   history = [],
-  chatEndpoint = '/api/chat',
+  chatEndpoint,
   signal,
   onDelta,
 }: ProcessFreeformLunaParams): Promise<LunaBrainTurnResult> {
@@ -1489,7 +1489,7 @@ async function callActiveLlm({
   storeSnapshot: MissionStoreSnapshot;
   localReply: string;
   history: LunaConversationTurn[];
-  chatEndpoint: string;
+  chatEndpoint?: string;
   signal?: AbortSignal;
   onDelta?: (delta: OpenRouterDelta) => void;
 }): Promise<{

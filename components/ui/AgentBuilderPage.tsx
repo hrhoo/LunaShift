@@ -2642,7 +2642,7 @@ const ApiKeyModal = ({
 
             {selectedHasServerEnv && !keysMap[selectedModelId] && (
               <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300 leading-relaxed">
-                <span className="font-semibold">Connected via server environment:</span> Local Vite proxy <code className="font-mono">/api/chat</code> already has <code className="font-mono">$OPENROUTER_API_KEY</code> configured. Adding a browser key below is optional and overrides it.
+                <span className="font-semibold">Connected to OpenRouter.</span> Luna uses the server’s key. You can enter your own key below to use it instead.
               </div>
             )}
 
@@ -2739,7 +2739,7 @@ const ApiKeyModal = ({
         <div className="px-5 py-3.5 bg-[#141416] border-t border-white/[0.06] flex items-center justify-between text-[11px] text-neutral-500">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/80" />
-            <span>Browser keys stay in localStorage; server $OPENROUTER_API_KEY stays in .env.local.</span>
+            <span>Personal keys are saved in this browser. The shared key stays on the server.</span>
           </div>
           <button
             type="button"
@@ -3026,7 +3026,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
   onDuplicateAgent,
   onDeleteAgent,
   onAssignTask,
-  chatEndpoint = '/api/chat',
+  chatEndpoint,
   sceneActive = true,
   isRevealComplete: isRevealCompleteProp,
   onAssetsLoaded,
