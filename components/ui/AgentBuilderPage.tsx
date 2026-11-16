@@ -69,7 +69,7 @@ import PlannerHudOverlay from './PlannerHudOverlay';
 import LunaMascot from './LunaMascot';
 import DecryptedText from './DecryptedText';
 import IconSlidersVertical from './IconSlidersVertical';
-import SpecularButton from './SpecularButton';
+import SpecularButton, { LunaSpecularButton } from './SpecularButton';
 import nvidiaIconUrl from '../../src/assets/nvidia-icon.png';
 import {
   missionPlannerStore,
@@ -4214,37 +4214,21 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({
 
                               if (useLiveSpecular) {
                                 return (
-                                  <SpecularButton
+                                  <LunaSpecularButton
                                     key={act.id}
                                     type="button"
-                                    size="sm"
-                                    radius={999}
-                                    tint="#ffffff"
-                                    tintOpacity={isDisabled ? 0.05 : isPrimary ? 0.13 : 0.09}
-                                    blur={12}
-                                    textColor={isDisabled ? '#a3a3a3' : '#ffffff'}
-                                    lineColor="#ffffff"
-                                    baseColor="#d4d4d8"
-                                    intensity={isDisabled ? 0.35 : 1.05}
-                                    idleIntensity={0.45}
-                                    shineSize={12}
-                                    shineFade={36}
-                                    thickness={1.3}
-                                    glow={1}
-                                    followMouse
-                                    proximity={250}
+                                    primary={isPrimary}
                                     autoAnimate={
                                       !isDisabled && (act.kind === 'check_plan' || isPrimary)
                                     }
                                     disabled={isDisabled}
                                     onClick={() => handleLunaAction(act)}
-                                    className="luna-chat-specular"
                                   >
                                     {act.kind === 'check_plan' && (
                                       <Check className="w-3.5 h-3.5 stroke-[2.5] text-white" />
                                     )}
                                     <span>{act.label}</span>
-                                  </SpecularButton>
+                                  </LunaSpecularButton>
                                 );
                               }
 

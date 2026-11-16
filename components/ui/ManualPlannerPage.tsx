@@ -1,4 +1,6 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { LunaSpecularButton } from './SpecularButton';
 import '../manual-planner/manual-planner.css';
 import '../manual-planner/event-slider.css';
 import { hydrate, icon } from '../manual-planner/icons.js';
@@ -19,7 +21,11 @@ export interface ManualPlannerPageProps {
 
 const ManualPlannerDom = memo(function ManualPlannerDom({
   onBackClick,
+  generateDisabled,
+  actionsBusy,
 }: {
+  generateDisabled: boolean;
+  actionsBusy: boolean;
   onBackClick: () => void;
 }) {
   return (
@@ -89,7 +95,7 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
           <div id="decisionBody" aria-live="polite" />
         </section>
 
-        <SolarEnergyPanel />
+        <SolarEnergyPanel generateDisabled={generateDisabled} />
 
         <div className="planner-detail-links">
           <button id="viewEvidence" type="button">
@@ -147,10 +153,10 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
                 </small>
               </span>
             </button>
-            <button id="runBtn" type="button" className="run-btn">
+            <LunaSpecularButton id="runBtn" type="button" disabled={actionsBusy}>
               <span data-icon="play" />
               <span>Check changes</span>
-            </button>
+            </LunaSpecularButton>
           </section>
         </details>
 
@@ -627,13 +633,17 @@ const ManualPlannerDom = memo(function ManualPlannerDom({
       <div className="toast" id="toast" role="status" hidden />
     </>
   );
-}, () => true);
+});
 
 export default function ManualPlannerPage({ active = true, onBack, onWatchOverview }: ManualPlannerPageProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const [primaryActions, setPrimaryActions] = useState<{ host: HTMLElement; button: HTMLButtonElement }[]>([]);
+  const [actionsBusy, setActionsBusy] = useState(false);
   const activeRef = useRef(active);
   const onBackRef = useRef(onBack);
   const onWatchOverviewRef = useRef(onWatchOverview);
+  const [generateDisabled, setGenerateDisabled] = useState(true);
+  const handleBackClick = useCallback(() => onBackRef.current?.(), []);
   const sceneRef = useRef<any>(null);
 
   activeRef.current = active;
@@ -685,7 +695,7 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
       latest: snapOnMount.latestStart || null,
     };
 
-    const energyMap = new EnergyMapView(() => state.bundle);
+    const energyMap = new EnergyMapView(() => state.bundle, setGenerateDisabled);
 
     function pushToSharedStore(markChecked = true) {
       if (isBootstrapping || !state.baseline) return;
@@ -722,12 +732,13 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
 
     function busy(value: boolean, text = 'Calculating your mission') {
       state.busy = value;
+      setActionsBusy(value);
       state.flow?.setBusy(value, text);
       if ($('busyBanner')) $('busyBanner')!.hidden = !value;
       if ($('busyText')) $('busyText')!.textContent = text;
       const prog = $('busyProgress') as HTMLProgressElement | null;
       if (prog) prog.value = 0;
-      for (const id of ['runBtn', 'compareBtn', 'searchBtn', 'latestBtn']) {
+      for (const id of ['compareBtn', 'searchBtn', 'latestBtn']) {
         const btn = $(id) as HTMLButtonElement | null;
         if (btn) btn.disabled = value;
       }
@@ -1245,6 +1256,14 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
         fillTop(initialDisplay.settings);
         showResult(initialDisplay, true);
         state.flow = new PlannerFlow({
+          renderPrimaryActions(body: HTMLElement) {
+            setPrimaryActions(Array.from(body.querySelectorAll<HTMLButtonElement>('button.primary'), button => {
+              const host = document.createElement('span');
+              host.className = 'planner-button-host';
+              button.replaceWith(host);
+              return { host, button };
+            }));
+          },
           state,
           compute,
           run,
@@ -1326,7 +1345,19 @@ export default function ManualPlannerPage({ active = true, onBack, onWatchOvervi
 
   return (
     <div ref={shellRef} className="manual-planner-shell">
-      <ManualPlannerDom onBackClick={() => onBackRef.current?.()} />
+      <ManualPlannerDom onBackClick={handleBackClick} generateDisabled={generateDisabled} actionsBusy={actionsBusy} />
+      {primaryActions.map(({ host, button }) => createPortal(
+        <LunaSpecularButton
+          type={button.getAttribute('type') === 'submit' ? 'submit' : 'button'}
+          data-flow={button.dataset.flow}
+          data-value={button.dataset.value}
+          disabled={actionsBusy}
+        >
+          <span className="planner-action-label" dangerouslySetInnerHTML={{ __html: button.innerHTML }} />
+        </LunaSpecularButton>,
+        host,
+        button.dataset.flow ?? 'submit'
+      ))}
     </div>
   );
 }

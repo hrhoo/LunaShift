@@ -23,7 +23,7 @@ function setup(t) {
     Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});
     t.after(()=>{if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];});
   }
-  const view=new EnergyMapView(()=>({}));
+  const view=new EnergyMapView(()=>({}), disabled=>{elements.get('generateEnergyMap').disabled=disabled;});
   view.plan={settings:{}};
   return {view,elements,detach(){globalThis.document.getElementById=()=>null;}};
 }
@@ -48,7 +48,8 @@ for(const running of [false,true])test(`destroy after DOM removal is safe with c
 
 test('cancel while mounted resets the controls and allows another calculation',async t=>{
   const {view,elements}=setup(t);
-  const pending=view.generate(),worker=view.worker;
+  const pending=elements.get('generateEnergyMap').onclick(),worker=view.worker;
+  assert.equal(elements.get('generateEnergyMap').disabled,true);
   view.cancel();
   await pending;
   assert.equal(worker.terminated,true);

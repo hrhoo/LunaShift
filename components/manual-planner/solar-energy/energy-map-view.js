@@ -129,7 +129,8 @@ export function drawEnergyMap(canvas,map,layer='total',selected=null,exporting=f
 }
 
 export class EnergyMapView {
-  constructor(getBundle) {
+  constructor(getBundle, setGenerateDisabled) {
+    this.setGenerateDisabled=setGenerateDisabled;
     this.controller=new AbortController();this.getBundle=getBundle;this.result=null;this.plan=null;this.sequence=0;this.worker=null;this.selected=null;
     $('generateEnergyMap').onclick=()=>this.generate();$('cancelEnergyMap').onclick=()=>this.cancel();
     $('energyMapLayer').onchange=()=>this.render();
@@ -156,7 +157,7 @@ export class EnergyMapView {
       $('energyMapStatus').textContent='Plan changed. Generate a map for the inspected plan.';
     }
     this.plan=plan;
-    $('generateEnergyMap').disabled=this.running||false;
+    this.setGenerateDisabled(Boolean(this.running));
     $('energyMapStatus').classList.remove('map-error');
     const mesh=this.getBundle()?.sites.find(s=>s.id===plan.site.id)?.mesh;
     if(mesh!==this.mesh){this.mesh=mesh;this.relief=prepareTerrainRelief(mesh);}
@@ -165,7 +166,7 @@ export class EnergyMapView {
     $('energyMapContext').textContent=`${role} · ${plan.site.name} · ${utc(plan.settings.startUTC)} · ${plan.settings.durationHours} h · ${plan.settings.heightM} m panel height`;
   }
   setBusy(busy) {
-    this.running=busy;$('generateEnergyMap').disabled=busy||!this.plan;$('cancelEnergyMap').hidden=!busy;
+    this.running=busy;this.setGenerateDisabled(busy||!this.plan);$('cancelEnergyMap').hidden=!busy;
     $('energyMapProgress').hidden=!busy;$('energyMapSection').setAttribute('aria-busy',String(busy));
   }
   cancel({updateUI=true}={}) {

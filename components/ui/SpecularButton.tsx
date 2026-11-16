@@ -497,4 +497,33 @@ const SpecularButton = ({
   );
 };
 
+export function LunaSpecularButton({
+  primary = true, disabled = false, ...props
+}: SpecularButtonProps & { primary?: boolean }) {
+  return (
+    <SpecularButton
+      size="sm"
+      radius={999}
+      tint="#ffffff"
+      tintOpacity={disabled ? 0.05 : primary ? 0.13 : 0.09}
+      blur={12}
+      textColor={disabled ? '#a3a3a3' : '#ffffff'}
+      lineColor="#ffffff"
+      baseColor="#d4d4d8"
+      intensity={disabled ? 0.35 : 1.05}
+      idleIntensity={0.45}
+      shineSize={12}
+      shineFade={36}
+      thickness={1.3}
+      glow={1}
+      followMouse
+      proximity={250}
+      autoAnimate={!disabled}
+      disabled={disabled}
+      className="luna-chat-specular"
+      {...props}
+    />
+  );
+}
+
 export default SpecularButton;

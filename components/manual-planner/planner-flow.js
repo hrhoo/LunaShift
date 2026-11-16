@@ -373,6 +373,7 @@ export class PlannerFlow {
 
     $('decisionBody').innerHTML =
       html + `<div id="decisionError" class="decision-error" role="alert" ${this.error ? '' : 'hidden'}>${esc(this.error)}</div>`;
+    this.api.renderPrimaryActions($('decisionBody'));
     if (this.stage === 'change' && this.kind !== 'site') {
       const update = () => {
         try {

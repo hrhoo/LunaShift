@@ -1,8 +1,9 @@
 import React, { memo } from 'react';
+import { LunaSpecularButton } from './SpecularButton';
 import '../manual-planner/solar-energy/energy-map.css';
 
 // The existing planner controller owns the calculated values inside this shell.
-export const SolarEnergyPanel = memo(function SolarEnergyPanel() {
+export const SolarEnergyPanel = memo(function SolarEnergyPanel({ generateDisabled }: { generateDisabled: boolean }) {
   return (
     <details id="energyMapSection" className="energy-map" open>
       <summary>
@@ -19,7 +20,9 @@ export const SolarEnergyPanel = memo(function SolarEnergyPanel() {
           <label>Display<select id="energyMapDisplay" defaultValue="smooth"><option value="smooth">Smooth</option><option value="cells">Sample cells</option></select></label>
           <label>Map view<select id="energyMapSurface" defaultValue="relief"><option value="relief">Energy + relief</option><option value="energy">Energy only</option><option value="terrain">Terrain only</option></select></label>
           <label>Time step<select id="energyMapStep" defaultValue="30"><option value="60">60 minutes</option><option value="30">30 minutes</option><option value="15">15 minutes</option><option value="5">5 minutes</option></select></label>
-          <button id="generateEnergyMap" className="primary" type="button" disabled><span data-icon="sun" />Generate energy map</button>
+          <LunaSpecularButton id="generateEnergyMap" type="button" disabled={generateDisabled}>
+            <span data-icon="sun" />Generate energy map
+          </LunaSpecularButton>
           <button id="cancelEnergyMap" className="secondary" type="button" hidden>Cancel</button>
         </div>
         <div className="energy-map-status-row">

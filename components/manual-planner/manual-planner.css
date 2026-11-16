@@ -58,14 +58,14 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.manual-planner-shell button,
+.manual-planner-shell button:not(:where(.specular-button)),
 .manual-planner-shell input,
 .manual-planner-shell select,
 .manual-planner-shell textarea {
   font: inherit;
 }
 
-.manual-planner-shell button {
+.manual-planner-shell button:not(:where(.specular-button)) {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -82,7 +82,7 @@
   cursor: wait;
 }
 
-.manual-planner-shell button:focus-visible,
+.manual-planner-shell button:not(:where(.specular-button)):focus-visible,
 .manual-planner-shell a:focus-visible,
 .manual-planner-shell input:focus-visible,
 .manual-planner-shell textarea:focus-visible,
@@ -91,7 +91,7 @@
   outline-offset: 2px;
 }
 
-.manual-planner-shell button:active:not(:disabled) {
+.manual-planner-shell button:not(:where(.specular-button)):active:not(:disabled) {
   transform: translateY(1px);
 }
 
@@ -213,6 +213,16 @@
 .manual-planner-shell .manual-header-back:hover {
   background: #253b49;
   border-color: #5eead4;
+}
+
+.manual-planner-shell #plannerPage .planner-button-host {
+  display: contents;
+}
+
+.manual-planner-shell .planner-action-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Primary & Secondary CTAs matching Navy Reference Palette */
@@ -888,24 +898,13 @@
   height: 11px;
 }
 
-.manual-planner-shell .run-btn {
+.manual-planner-shell #runBtn {
   margin: 10px 16px 10px 10px;
-  background: rgba(13, 161, 178, 0.16);
-  border: 1px solid rgba(34, 211, 238, 0.35);
-  color: #67e8f9;
-  padding: 10px 13px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 600;
 }
 
-.manual-planner-shell .run-btn .icon {
+.manual-planner-shell #runBtn .icon {
   width: 13px;
   height: 13px;
-}
-
-.manual-planner-shell .run-btn:hover {
-  background: rgba(13, 161, 178, 0.28);
 }
 
 /* Evidence Section */
@@ -2920,7 +2919,7 @@
     border-top: 1px solid var(--line);
     min-width: 70%;
   }
-  .manual-planner-shell .run-btn {
+  .manual-planner-shell #runBtn {
     margin-left: auto;
   }
   .manual-planner-shell .planner-heading {
@@ -3107,7 +3106,7 @@
     min-width: 65%;
     padding: 12px 10px;
   }
-  .manual-planner-shell .run-btn {
+  .manual-planner-shell #runBtn {
     margin-right: 10px;
   }
   .manual-planner-shell .metrics-row {

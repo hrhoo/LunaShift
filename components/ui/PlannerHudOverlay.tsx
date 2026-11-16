@@ -461,7 +461,7 @@ export const PlannerHudOverlay: React.FC<PlannerHudOverlayProps> = ({
             <button
               type="button"
               onClick={() => missionPlannerStore.togglePlay()}
-              className="flex items-center gap-1 rounded-full bg-[#1ac8db]/15 hover:bg-[#1ac8db]/25 border border-[#1ac8db]/30 px-2.5 py-0.5 text-[9.5px] font-semibold text-[#1ac8db] transition-colors cursor-pointer"
+              className="flex items-center gap-1 rounded-full bg-[#101319]/65 hover:bg-[#101319]/75 backdrop-blur-md border border-white/20 shadow-[inset_0_1px_0_rgb(255_255_255/0.12)] px-2.5 py-0.5 text-[9.5px] font-semibold text-[#00E81F] transition-colors cursor-pointer"
             >
               {store.playing ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
               <span>{store.playing ? 'Pause' : 'Play'}</span>
