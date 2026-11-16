@@ -168,10 +168,12 @@ export class EnergyMapView {
     this.running=busy;$('generateEnergyMap').disabled=busy||!this.plan;$('cancelEnergyMap').hidden=!busy;
     $('energyMapProgress').hidden=!busy;$('energyMapSection').setAttribute('aria-busy',String(busy));
   }
-  cancel() {
+  cancel({updateUI=true}={}) {
     this.sequence++;this.worker?.terminate();this.worker=null;this.reject?.(new Error('Cancelled'));this.reject=null;
-    if(this.running)$('energyMapStatus').textContent='Calculation cancelled. You can generate a new map.';
-    this.setBusy(false);
+    if(updateUI){
+      if(this.running)$('energyMapStatus').textContent='Calculation cancelled. You can generate a new map.';
+      this.setBusy(false);
+    }else this.running=false;
   }
   async generate() {
     if(!this.plan||this.running)return;
@@ -220,7 +222,8 @@ export class EnergyMapView {
     $('energyMapAssumptions').textContent=`${map.settings.panelMode.replaceAll('_',' ')} · ${Math.round(map.settings.efficiency*100)}% efficiency · ${map.settings.terrainReflectance} reflectance. ${map.sampling.scatterResolution**2*2} reflected-light directions per point; ${map.sampling.sunSamples} solar-disc samples.`;
   }
   destroy() {
-    this.cancel();this.controller.abort();this.resize.disconnect();
+    // React may have already removed the controls before effect cleanup runs.
+    this.controller.abort();this.resize.disconnect();this.cancel({updateUI:false});
   }
   download(blob,extension) {
     if(!blob)return;
