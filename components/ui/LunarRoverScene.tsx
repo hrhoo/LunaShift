@@ -25,7 +25,9 @@ import {
   RIDGE_SHOULDER_SITE,
 } from './LunarOverviewModel';
 import { sampleAt } from '../manual-planner/core/rehearsal.js';
-import { missionPlannerStore, type MissionSample } from '../manual-planner/missionStore';
+import { missionPlannerStore, type MissionSample, type MissionResult } from '../manual-planner/missionStore';
+import { updateSurfaceMissionSky, createSunOcclusion, SUN_DISPLAY_RADIUS } from './surface-mission-sky.js';
+import { MissionSiteSurface } from './mission-site-surface.js';
 
 const EARTH_GLB_URL = '/assets/aistudio/Earth_1_12756.glb';
 const MOON_GLB_URL = '/assets/aistudio/moon_small.glb';
@@ -131,6 +133,9 @@ export default function LunarRoverScene({
   const [utcDoyClock, setUtcDoyClock] = useState<string>(() => formatUtcDoyClock());
 
   const [sceneReady, setSceneReady] = useState(false);
+  const [missionSkyReadout, setMissionSkyReadout] = useState<{siteTitle: string; coordinates: string; sample: MissionSample} | null>(null);
+  const [missionSkyError, setMissionSkyError] = useState(false);
+  const [missionTerrainStatus, setMissionTerrainStatus] = useState('Loading selected-site terrain…');
   const [missionHudActive, setMissionHudActive] = useState(() =>
     syncToMissionStore ? missionPlannerStore.getSnapshot().hasCheckedPlan : false
   );
@@ -400,6 +405,7 @@ export default function LunarRoverScene({
     const container = mountRef.current;
     if (!container) return;
 
+    const useMissionSky = syncToMissionStore && !initialOverview;
     const isSoftwareGl = detectSoftwareGl();
 
     const renderer = new THREE.WebGLRenderer({
@@ -413,6 +419,7 @@ export default function LunarRoverScene({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false;
+    renderer.localClippingEnabled = useMissionSky;
     renderer.shadowMap.needsUpdate = true;
     renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -449,14 +456,20 @@ export default function LunarRoverScene({
 
     // Build Authoritative 3 km x 3 km Shackleton Crater Terrain Pipeline + MOON_ME_DE421 Sky Model
     const terrainPipeline = new ShackletonTerrainPipeline();
+    let missionSurface: MissionSiteSurface | null = null;
+    let missionTerrainReady = false;
+    let lastTerrainSiteId: string | null = null;
+    const sampleGroundHeight = (x: number, z: number): number | null =>
+      useMissionSky ? missionSurface?.sampleHeight(x, z) ?? null : terrainPipeline.sampleHeight(x, z);
     const overviewBackend = new LunarOverviewBackend(terrainPipeline, RIDGE_SHOULDER_SITE);
     overviewBackendRef.current = overviewBackend;
     syncOverviewFromBackend(simTimeMsRef.current);
 
     const terrainMesh = terrainPipeline.createTerrainMesh();
+    terrainMesh.visible = !useMissionSky;
     scene.add(terrainMesh);
 
-    const rockScatterGroup = terrainPipeline.createRockScatterGroup();
+    const rockScatterGroup = useMissionSky ? new THREE.Group() : terrainPipeline.createRockScatterGroup();
     scene.add(rockScatterGroup);
 
     // Mount Exact NASA-Grade CoreHab 3D Surface Habitat on the graded NNE plain
@@ -467,6 +480,7 @@ export default function LunarRoverScene({
       COREHAB_POS_Z
     );
     coreHab.group.rotation.y = COREHAB_YAW;
+    coreHab.group.visible = !useMissionSky;
     scene.add(coreHab.group);
 
 
@@ -658,6 +672,16 @@ export default function LunarRoverScene({
     let cesiumSettled = false;
     let didNotifyAssetsLoaded = false;
     let isDisposed = false;
+    let initialMissionResult: MissionResult | null = null;
+    // Evaluate the default mission without marking it checked or changing the
+    // user's plan. Later previews/committed plans take precedence each frame.
+    if (useMissionSky) {
+      missionPlannerStore.evaluateSettings().then(result => {
+        if (!isDisposed) initialMissionResult = result;
+      }).catch(() => {
+        if (!isDisposed) setMissionSkyError(true);
+      });
+    }
     let readyNotifyTimerId: number | null = null;
 
     const tryFlushAndNotifyReady = () => {
@@ -803,6 +827,7 @@ export default function LunarRoverScene({
     const solarCoronaSprite = new THREE.Sprite(solarCoronaMat);
     solarCoronaSprite.scale.set(2450, 2450, 1);
     sunAnchorGroup.add(solarCoronaSprite);
+    const sunOcclusion = useMissionSky ? createSunOcclusion(SUN_DISPLAY_RADIUS, solarCoronaMat) : null;
 
     const sunGeometries: THREE.BufferGeometry[] = [];
     const sunMaterials: THREE.Material[] = [];
@@ -828,7 +853,7 @@ export default function LunarRoverScene({
         const size = new THREE.Vector3();
         box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-        const targetDiameter = 1060.0;
+        const targetDiameter = SUN_DISPLAY_RADIUS * 2;
         const scale = targetDiameter / maxDim;
         sunModel.scale.setScalar(scale);
 
@@ -849,6 +874,7 @@ export default function LunarRoverScene({
             mats.forEach((m) => {
               if (!m) return;
               m.depthWrite = true;
+              if (sunOcclusion) m.clippingPlanes = [sunOcclusion.plane];
               if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                 const std = m as THREE.MeshStandardMaterial;
                 if (std.map) {
@@ -1087,7 +1113,10 @@ export default function LunarRoverScene({
     });
 
     // Stream & bake the 3 km x 3 km Shackleton region from Cesium Moon 3D Tiles (Asset 2684829)
-    terrainPipeline
+    if (useMissionSky) {
+      // The prepared site mesh is authoritative; streaming cannot replace it.
+      cesiumSettled = true;
+    } else terrainPipeline
       .tryStreamCesiumMoonTiles(() => {
         terrainPipeline.waypoints.forEach((wp, idx) => {
           const marker = waypointMarkersGroup.children[idx];
@@ -1246,8 +1275,11 @@ export default function LunarRoverScene({
     // =========================================================================
     // 6. POWERED 5-SECOND LUNAR LANDING SIMULATION
     // =========================================================================
-    const landerX = ROVER_SPAWN_X;
-    const landerZ = ROVER_SPAWN_Z;
+    let landerX = ROVER_SPAWN_X;
+    let landerZ = ROVER_SPAWN_Z;
+    const landerGroundQuaternion = new THREE.Quaternion();
+    const landerAttitudeQuaternion = new THREE.Quaternion();
+    const landerAttitudeEuler = new THREE.Euler(0, 0, 0, 'YXZ');
     const heading = ROVER_SPAWN_HEADING;
     const fwdX = -Math.sin(heading);
     const fwdZ = -Math.cos(heading);
@@ -1262,8 +1294,8 @@ export default function LunarRoverScene({
     let lastClockKey = '';
 
     const initTotalYaw = heading + ROVER_SPAWN_ORBIT_YAW;
-    const initFocusX = landerX - rgtX * 4.2;
-    const initFocusZ = landerZ - rgtZ * 4.2;
+    let initFocusX = landerX - rgtX * 4.2;
+    let initFocusZ = landerZ - rgtZ * 4.2;
     const chaseCamPos = new THREE.Vector3(
       initFocusX + ROVER_INTRO_ORBIT_DIST * Math.cos(ROVER_SPAWN_ORBIT_PITCH) * Math.sin(initTotalYaw),
       landingGroundY + 1.2 + ROVER_INTRO_ORBIT_DIST * Math.sin(ROVER_SPAWN_ORBIT_PITCH),
@@ -1301,7 +1333,14 @@ export default function LunarRoverScene({
     const sunBaseOrbitOffset = sunAnchorGroup.position.clone().sub(orbitalMoonCenter);
     let earthOrbitPhase = 0;
     let sunOrbitPhase = 0;
-    let lastShadowSunPhase = 0;
+    const lastShadowSunDirection = new THREE.Vector3();
+    const skyObserver = new THREE.Vector3(landerX, landingGroundY, landerZ);
+    const missionSkyObjects = {sun: sunAnchorGroup, earth: earthAnchorGroup, light: sunLight, sunDirection: sunDirNormalized, sunOcclusion};
+    let lastSkyResult: MissionResult | null = null;
+    let lastSkyHour = NaN;
+    let missionSkySample: MissionSample | null = null;
+    let lastSkyReadoutKey = '';
+    if (useMissionSky) updateSurfaceMissionSky(missionSkyObjects, null, skyObserver);
     let hasAimedInitialOverviewEarth = false;
     let lastMissionFocusTrigger = syncToMissionStore ? missionPlannerStore.getSnapshot().cameraFocusTrigger : 0;
     let pendingSurfaceFocus: { yaw: number; pitch: number; dist: number } | null = null;
@@ -1329,6 +1368,52 @@ export default function LunarRoverScene({
       const dt = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.getElapsedTime();
 
+      const missionSnapshot = useMissionSky ? missionPlannerStore.getSnapshot() : null;
+      const frameMissionResult = missionSnapshot
+        ? missionSnapshot.preview || missionSnapshot.baseline || initialMissionResult : null;
+      if (frameMissionResult && frameMissionResult.site.id !== lastTerrainSiteId) {
+        lastTerrainSiteId = frameMissionResult.site.id;
+        missionTerrainReady = false;
+        const bundle = missionPlannerStore.getBundle();
+        const site = bundle?.sites.find((candidate: {id: string}) => candidate.id === lastTerrainSiteId);
+        try {
+          if (!site?.mesh) throw new Error('No prepared terrain for this site.');
+          if (!missionSurface) {
+            missionSurface = new MissionSiteSurface(bundle.sites[0]);
+            scene.add(missionSurface.mesh);
+          }
+          missionSurface.selectSite(site);
+          const origin = missionSurface.mesh.position;
+          const pose = missionSurface.groundPose(origin.x, origin.z, heading, 2.48);
+          const habitatPose = missionSurface.groundPose(
+            origin.x + COREHAB_POS_X - ROVER_SPAWN_X,
+            origin.z + COREHAB_POS_Z - ROVER_SPAWN_Z, COREHAB_YAW, coreHab.groundContactPoints,
+          );
+          if (!pose || !habitatPose) throw new Error('Missing terrain at the landing site.');
+          landerX = pose.position.x;
+          landerZ = pose.position.z;
+          landingGroundY = pose.position.y;
+          landerGroundQuaternion.copy(pose.quaternion);
+          coreHab.group.position.copy(habitatPose.position);
+          coreHab.group.quaternion.copy(habitatPose.quaternion);
+          initFocusX = landerX - rgtX * 4.2;
+          initFocusZ = landerZ - rgtZ * 4.2;
+          pendingSurfaceFocus = null;
+          resetSurfaceToEarthSpawnRef.current = true;
+          for (let i = 0; i < ballisticCount; i++) {
+            ballisticLife[i] = -1;
+            ballisticPos[i * 3 + 1] = -9999;
+          }
+          ballisticGeo.attributes.position.needsUpdate = true;
+          renderer.shadowMap.needsUpdate = true;
+          missionTerrainReady = true;
+          setMissionTerrainStatus(`LOLA terrain · ${site.mesh.spacing_m} m grid · craft illustrative`);
+        } catch {
+          if (missionSurface) missionSurface.mesh.visible = false;
+          setMissionTerrainStatus('Terrain unavailable for the selected site.');
+        }
+      }
+
       if (resetSurfaceToEarthSpawnRef.current) {
         resetSurfaceToEarthSpawnRef.current = false;
         landingElapsed = 0.0;
@@ -1345,7 +1430,7 @@ export default function LunarRoverScene({
       }
 
       // Advance 5-second powered landing once scene becomes active & loader overlay has cleared
-      if (activeRef.current && !moonOverviewActiveRef.current && !pauseDescentRef.current) {
+      if (activeRef.current && !moonOverviewActiveRef.current && !pauseDescentRef.current && (!useMissionSky || missionTerrainReady)) {
         landingElapsed = Math.min(DESCENT_DURATION + 1.2, landingElapsed + dt);
       }
 
@@ -1374,10 +1459,14 @@ export default function LunarRoverScene({
 
       roverY = landingGroundY + landerAltitude;
       roverWorldRoot.position.set(landerX, roverY, landerZ);
-      roverWorldRoot.rotation.order = 'YXZ';
-      roverWorldRoot.rotation.y = heading;
-      roverWorldRoot.rotation.x = landerPitch;
-      roverWorldRoot.rotation.z = landerRoll;
+      if (useMissionSky && missionTerrainReady) {
+        landerAttitudeEuler.set(landerPitch, 0, landerRoll, 'YXZ');
+        roverWorldRoot.quaternion.copy(landerGroundQuaternion)
+          .multiply(landerAttitudeQuaternion.setFromEuler(landerAttitudeEuler));
+      } else {
+        roverWorldRoot.rotation.order = 'YXZ';
+        roverWorldRoot.rotation.set(landerPitch, heading, landerRoll);
+      }
 
       lander.setDescentThrust(thrustCmd, Math.max(0, landerAltitude), elapsed);
 
@@ -1385,7 +1474,7 @@ export default function LunarRoverScene({
       const orbitSpinMult = orbitalPausedRef.current
         ? 0.0
         : 1.0 + Math.log10(Math.max(1, orbitalSpeedRef.current)) * 3.8;
-      if (orbitSpinMult > 0.0) {
+      if (!useMissionSky && orbitSpinMult > 0.0) {
         earthOrbitPhase += dt * 0.042 * orbitSpinMult;
         sunOrbitPhase += dt * 0.026 * orbitSpinMult;
 
@@ -1402,12 +1491,34 @@ export default function LunarRoverScene({
       }
       sunSpinGroup.rotation.y += dt * 0.032 * orbitSpinMult;
 
-      // Anchor directional shadow target on the landing pad ground so descending shadow approaches the 4 footpads
-      sunLight.target.position.set(landerX, landingGroundY, landerZ);
-      sunLight.position
-        .copy(sunDirNormalized)
-        .multiplyScalar(115.0)
-        .add(sunLight.target.position);
+      if (useMissionSky) {
+        const snapshot = missionSnapshot!;
+        const result = frameMissionResult;
+        const observerY = landingGroundY + (result?.settings.heightM ?? 0);
+        const observerMoved = skyObserver.y !== observerY || skyObserver.x !== landerX || skyObserver.z !== landerZ;
+        if (result !== lastSkyResult || snapshot.hour !== lastSkyHour || observerMoved) {
+          lastSkyResult = result;
+          lastSkyHour = snapshot.hour;
+          missionSkySample = result ? sampleAt(result, snapshot.hour) as MissionSample | null : null;
+          skyObserver.set(landerX, observerY, landerZ);
+          updateSurfaceMissionSky(missionSkyObjects, missionSkySample, skyObserver);
+          if (observerMoved) renderer.shadowMap.needsUpdate = true;
+        }
+        if (result && missionSkySample) {
+          const sample = missionSkySample;
+          simTimeMsRef.current = Date.parse(sample.utc);
+          const readoutKey = `${result.site.id}|${sample.utc.slice(0, 19)}|${sample.sunAzDeg.toFixed(1)}|${sample.sunElDeg.toFixed(1)}|${sample.earthAzDeg.toFixed(1)}|${sample.earthElDeg.toFixed(1)}|${sample.sunFraction > 1e-8}|${sample.earthFraction > 1e-8}`;
+          if (readoutKey !== lastSkyReadoutKey) {
+            lastSkyReadoutKey = readoutKey;
+            setMissionSkyReadout({siteTitle: result.site.name, coordinates: `${result.site.latitude_deg.toFixed(5)}°, ${result.site.longitude_deg.toFixed(5)}°`, sample});
+            setUtcDoyClock(formatUtcDoyClock(new Date(sample.utc)));
+          }
+        }
+      } else {
+        // Standalone orbital overview retains its separate demonstration clock.
+        sunLight.target.position.set(landerX, landingGroundY, landerZ);
+        sunLight.position.copy(sunDirNormalized).multiplyScalar(115).add(sunLight.target.position);
+      }
 
       // =======================================================================
       // RADIAL VACUUM PLUME IMPINGEMENT DUST SCATTER (BELOW 7.5M ALTITUDE)
@@ -1460,28 +1571,10 @@ export default function LunarRoverScene({
         wpRings[i].scale.set(s, s, 1);
       }
 
-      // Sync lighting, UTC clock, and camera focus to Unified Mission Store when enabled
+      // Camera focus uses the same body positions as the mission sky.
       if (syncToMissionStore) {
         const mSnap = missionPlannerStore.getSnapshot();
         if (mSnap.hasCheckedPlan) {
-          const activeRes = mSnap.preview || mSnap.baseline;
-          if (activeRes) {
-            const mSample = sampleAt(activeRes, mSnap.hour) as MissionSample | null;
-            if (mSample) {
-              const targetIntensity = 1.45 + 3.95 * THREE.MathUtils.clamp(mSample.sunFraction, 0, 1);
-              sunLight.intensity = THREE.MathUtils.damp(sunLight.intensity, targetIntensity, 5.5, dt);
-
-              const missionMs = Date.parse(mSample.utc);
-              if (Number.isFinite(missionMs)) {
-                simTimeMsRef.current = missionMs;
-                const mClock = formatUtcDoyClock(new Date(missionMs));
-                if (mClock !== lastClockKey) {
-                  lastClockKey = mClock;
-                  setUtcDoyClock(mClock);
-                }
-              }
-            }
-          }
           if (mSnap.cameraFocusTrigger !== lastMissionFocusTrigger) {
             lastMissionFocusTrigger = mSnap.cameraFocusTrigger;
             if (mSnap.cameraFocus === 'sun') {
@@ -1531,7 +1624,7 @@ export default function LunarRoverScene({
       const focusZ = landerZ - rgtZ * 4.2 * focusShift;
       const desiredCamX = focusX + orbitDist * orbitCosP * Math.sin(totalYaw);
       const desiredCamZ = focusZ + orbitDist * orbitCosP * Math.cos(totalYaw);
-      const groundAtCam = terrainPipeline.sampleHeight(desiredCamX, desiredCamZ);
+      const groundAtCam = sampleGroundHeight(desiredCamX, desiredCamZ) ?? landingGroundY;
       const desiredCamY = Math.max(groundAtCam + 0.85, landingGroundY + 1.2 + orbitDist * orbitSinP);
 
       const camDamp = isPointerDragging ? 22.0 : 6.5;
@@ -1621,7 +1714,7 @@ export default function LunarRoverScene({
 
         // Safety ground clearance floor during low-altitude liftoff / touchdown
         if (easeT < 0.45) {
-          const groundSafeY = terrainPipeline.sampleHeight(tmpFlightCamPos.x, tmpFlightCamPos.z) + 0.55;
+          const groundSafeY = (sampleGroundHeight(tmpFlightCamPos.x, tmpFlightCamPos.z) ?? landingGroundY) + 0.55;
           const floorBlend = 1.0 - THREE.MathUtils.smoothstep(easeT, 0.18, 0.45);
           if (tmpFlightCamPos.y < groundSafeY) {
             tmpFlightCamPos.y = THREE.MathUtils.lerp(tmpFlightCamPos.y, groundSafeY, floorBlend);
@@ -1691,6 +1784,16 @@ export default function LunarRoverScene({
         camera.lookAt(surfaceCamLook);
       }
 
+      if (useMissionSky) {
+        // Never show the fixed demonstration terrain, rocks or waypoints over a
+        // geographic mission site. The selected DEM supplies all ground contact.
+        terrainMesh.visible = false;
+        rockScatterGroup.visible = false;
+        waypointMarkersGroup.visible = false;
+        if (missionSurface) missionSurface.mesh.visible = missionTerrainReady;
+        roverWorldRoot.visible = coreHab.group.visible = ballisticPoints.visible = missionTerrainReady;
+      }
+
       if (!initialOverview) {
         aimEarthAtCamera();
       } else if (!hasAimedInitialOverviewEarth && earthLoaded && earthOrbitPhase === 0) {
@@ -1700,21 +1803,21 @@ export default function LunarRoverScene({
 
       // Re-render directional shadow map while lander is descending/settling or Sun moves
       if (moonTransition < 0.28) {
-        const sunAngShift = Math.abs(sunOrbitPhase - lastShadowSunPhase);
+        const sunDirectionChanged = sunDirNormalized.distanceToSquared(lastShadowSunDirection) > 1e-8;
         if (
           warmupFramesRemaining > 0 ||
           landingElapsed < DESCENT_DURATION + 0.6 ||
-          sunAngShift > 0.004
+          sunDirectionChanged
         ) {
           renderer.shadowMap.needsUpdate = true;
-          lastShadowSunPhase = sunOrbitPhase;
+          lastShadowSunDirection.copy(sunDirNormalized);
         }
       }
 
       // =======================================================================
       // OVERVIEW CONTROLLER TIME STEPPING & MOON_ME_DE421 SKY TELEMETRY
       // =======================================================================
-      if (!orbitalPausedRef.current) {
+      if (!useMissionSky && !orbitalPausedRef.current) {
         if (orbitalModeRef.current === 'now') {
           simTimeMsRef.current = Date.now();
         } else {
@@ -1723,7 +1826,7 @@ export default function LunarRoverScene({
       }
 
       overviewEvalTimer += dt;
-      if (overviewEvalTimer >= 0.09) {
+      if (!useMissionSky && overviewEvalTimer >= 0.09) {
         overviewEvalTimer = 0;
         const clockStr = formatUtcDoyClock(new Date(simTimeMsRef.current));
         if (clockStr !== lastClockKey) {
@@ -1890,6 +1993,7 @@ export default function LunarRoverScene({
       lander.dispose();
       coreHab.dispose();
       envMapRT.dispose();
+      missionSurface?.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
@@ -1902,6 +2006,24 @@ export default function LunarRoverScene({
     <div className="relative w-full h-full bg-black overflow-hidden select-none font-mono tabular-nums text-white">
       {/* 3D Shackleton Crater WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
+
+      {syncToMissionStore && !moonOverviewActive && (
+        <div className={`pointer-events-none absolute left-3 right-3 z-20 text-[10px] leading-relaxed text-white/80 drop-shadow-[0_1px_3px_#000] ${missionHudActive ? 'top-12 lg:right-[200px]' : 'top-3'}`} aria-label="Mission sky position">
+          {missionSkyReadout ? (
+            <>
+              <div>{missionSkyReadout.siteTitle} · {missionSkyReadout.coordinates} · {missionSkyReadout.sample.utc.slice(0, 19).replace('T', ' ')} UTC</div>
+              <div>
+                Sun · az {missionSkyReadout.sample.sunAzDeg.toFixed(1)}° · el {missionSkyReadout.sample.sunElDeg.toFixed(1)}°{missionSkyReadout.sample.sunFraction <= 1e-8 ? ' · obscured' : ''}
+                {'  /  '}
+                Earth · az {missionSkyReadout.sample.earthAzDeg.toFixed(1)}° · el {missionSkyReadout.sample.earthElDeg.toFixed(1)}°{missionSkyReadout.sample.earthFraction <= 1e-8 ? ' · below site horizon' : ''}
+              </div>
+              <div className="text-white/50">Mission-time positions · bodies enlarged · {missionTerrainStatus}</div>
+            </>
+          ) : (
+            <div>{missionSkyError ? 'Sky data unavailable. Reopen the viewer to retry.' : 'Loading mission sky…'}</div>
+          )}
+        </div>
+      )}
 
       {/* Orbital Distance Dotted Lines (Earth -> Moon & Moon -> Sun) */}
       <svg

@@ -18,6 +18,7 @@ import * as THREE from 'three';
 
 export interface CoreHabBuildResult {
   group: THREE.Group;
+  groundContactPoints: Array<[number, number]>;
   colliderHalfExtents: { halfWidthX: number; halfLengthZ: number };
   dispose: () => void;
 }
@@ -1544,6 +1545,7 @@ export function buildCoreHabBase(maxAniso = 4): CoreHabBuildResult {
 
   return {
     group: root,
+    groundContactPoints: Z_STATIONS.flatMap(z => [-X_SKID, X_SKID].map(x => [x, z] as [number, number])),
     colliderHalfExtents: {
       halfWidthX: 2.55,
       halfLengthZ: 5.45,
